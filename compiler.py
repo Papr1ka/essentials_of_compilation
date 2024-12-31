@@ -187,12 +187,7 @@ class Compiler:
                     case ast.UnaryOp(ast.USub(), atm):
                         arg = self.select_arg(atm)
                         match arg:
-                            case Variable():
-                                return [
-                                    Instr("negq", [arg]),
-                                    Instr("movq", [arg, target]),
-                                ]
-                            case Immediate():
+                            case Immediate() | Variable():
                                 return [
                                     Instr("movq", [arg, target]),
                                     Instr("negq", [target]),
