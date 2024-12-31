@@ -133,7 +133,8 @@ class Compiler:
             case ast.Expr(value):
                 expr, temporaries = self.rco_exp(value, False)
                 assigns = [ast.Assign([name], exp) for name, exp in temporaries]
-                return [*assigns, expr]
+                new_expr = ast.Expr(expr)
+                return [*assigns, new_expr]
 
             case ast.Assign([ast.Name(var)], expr):
                 expr, temporaries = self.rco_exp(expr, False)
@@ -171,6 +172,13 @@ class Compiler:
                     Instr("movq", [arg, Reg("rdi")]),
                     Callq("print_int", 1),
                 ]
+            case ast.Expr(ast.Call(ast.Name("input_int"), [])):
+                return [
+                    Callq("read_int", 0),
+                    Instr("movq", [Reg("rax"), target]),
+                ]
+            case ast.Expr():
+                return []
             case ast.Assign([ast.Name(var)], exp):
                 target = Variable(var)
                 match exp:
@@ -213,6 +221,8 @@ class Compiler:
                                     Instr("movq", [arg0, target]),
                                     Instr(instr_name, [arg1, target]),
                                 ]
+            case _:
+                raise Exception("E")
 
     def select_instructions(self, p: ast.Module) -> X86Program:
         match p:
@@ -221,6 +231,70 @@ class Compiler:
                 for stmt in body:
                     program = [*program, *self.select_stmt(stmt)]
                 return X86Program(program)
+
+    ############################################################################
+    # Liveness analysys
+    ############################################################################
+
+    def compute_locations(self, a: arg) -> Set[location]:
+        match a:
+            case Reg() | Deref() | Variable():
+                return set([a])
+            case _:
+                return set()
+
+    def compute_R(self, i: instr) -> Set[location]:
+        # set of locations instruction read from
+        match i:
+            case Instr("movq", [arg0, arg1]):
+                return self.compute_locations(arg0)
+            case Instr(_, [arg0, arg1]):
+                locs0 = self.compute_locations(arg0)
+                locs1 = self.compute_locations(arg1)
+                return locs0.union(locs1)
+            case Instr("negq" | "pushq", [arg0]):
+                return self.compute_locations(arg0)
+            case Callq(_, num_args):
+                return {0: set(), 1: set([Reg("rdi")])}[num_args]
+            case _:
+                return set()
+
+    def compute_W(self, i: instr) -> Set[location]:
+        # set of locations instruction write to
+        match i:
+            case Instr(_, [arg0, arg1]):
+                return self.compute_locations(arg1)
+            case Instr("negq" | "popq", [arg0]):
+                return self.compute_locations(arg0)
+            case Callq():
+                return set(
+                    [
+                        Reg("rax"),
+                        Reg("rcx"),
+                        Reg("rdx"),
+                        Reg("rsi"),
+                        Reg("rdi"),
+                        Reg("r8"),
+                        Reg("r9"),
+                        Reg("r10"),
+                        Reg("r11"),
+                    ]
+                )
+            case _:
+                return set()
+
+    def uncover_live(self, p: X86Program) -> Dict[instr, Set[Variable]]:
+        match p:
+            case X86Program(list() as body):
+                mapping = {}
+                l_after = set()
+                for instr in reversed(body):
+                    mapping[instr] = l_after
+                    read = self.compute_R(instr)
+                    write = self.compute_W(instr)
+                    l_before = l_after.difference(write).union(read)
+                    l_after = l_before
+                return mapping
 
     ############################################################################
     # Assign Homes
