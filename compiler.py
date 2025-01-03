@@ -1,5 +1,6 @@
 import ast
 from ast import *
+from graph import UndirectedAdjList
 from utils import *
 from x86_ast import *
 import os
@@ -283,7 +284,7 @@ class Compiler:
             case _:
                 return set()
 
-    def uncover_live(self, p: X86Program) -> Dict[instr, Set[Variable]]:
+    def uncover_live(self, p: X86Program) -> Dict[instr, Set[location]]:
         match p:
             case X86Program(list() as body):
                 mapping = {}
@@ -295,6 +296,30 @@ class Compiler:
                     l_before = l_after.difference(write).union(read)
                     l_after = l_before
                 return mapping
+
+    ############################################################################
+    # Building interference graph
+    ############################################################################
+
+    def build_interference(self, p: X86Program) -> UndirectedAdjList:
+        match p:
+            case X86Program(list() as body):
+                liveness = self.uncover_live(p)
+                graph = UndirectedAdjList()
+                for instr in body:
+                    live_after = liveness[instr]
+                    match instr:
+                        case Instr("movq", [s, d]):
+                            for v in live_after:
+                                if v != s and v != d:
+                                    graph.add_edge(d, v)
+                        case _:
+                            write_to = self.compute_W(instr)
+                            for d in write_to:
+                                for v in live_after:
+                                    if v != d:
+                                        graph.add_edge(d, v)
+                return graph
 
     ############################################################################
     # Assign Homes
