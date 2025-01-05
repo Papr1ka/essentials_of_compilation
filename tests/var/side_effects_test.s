@@ -1,22 +1,21 @@
 	.globl main
 main:
     pushq %rbp
+    pushq %rbx
     movq %rsp, %rbp
-    subq $32, %rsp
+    subq $8, %rsp
     callq read_int
-    movq %rax, -8(%rbp)
+    movq %rax, %rbx
     callq read_int
-    movq %rax, -16(%rbp)
+    movq %rax, %rcx
     callq read_int
-    movq %rax, -24(%rbp)
-    movq -8(%rbp), %rax
-    movq %rax, -32(%rbp)
-    movq -32(%rbp), %rax
-    addq -24(%rbp), %rax
-    movq %rax, -32(%rbp)
-    movq -32(%rbp), %rdi
+    movq %rax, %rcx
+    movq %rbx, %rdx
+    addq %rcx, %rdx
+    movq %rdx, %rdi
     callq print_int
-    addq $32, %rsp
+    addq $8, %rsp
+    popq %rbx
     popq %rbp
     retq 
 

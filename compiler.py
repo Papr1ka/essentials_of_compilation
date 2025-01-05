@@ -5,6 +5,7 @@ from utils import *
 from x86_ast import *
 import os
 from typing import List, Tuple, Set, Dict
+from priority_queue import PriorityQueue
 
 Binding = Tuple[Name, expr]
 Temporaries = List[Binding]
@@ -231,7 +232,7 @@ class Compiler:
                 program = []
                 for stmt in body:
                     program = [*program, *self.select_stmt(stmt)]
-                return X86Program(program)
+                return X86Program(program, 0)
 
     ############################################################################
     # Liveness analysys
@@ -305,9 +306,17 @@ class Compiler:
         match p:
             case X86Program(list() as body):
                 liveness = self.uncover_live(p)
-                graph = UndirectedAdjList()
+                graph = UndirectedAdjList(
+                    vertex_label=lambda x: (
+                        str(x) if not str(x).startswith("%") else f"\{x}"
+                    )
+                )
                 for instr in body:
                     live_after = liveness[instr]
+                    locations = self.compute_R(instr).union(self.compute_W(instr))
+                    for loc in locations:
+                        graph.add_vertex(loc)
+
                     match instr:
                         case Instr("movq", [s, d]):
                             for v in live_after:
@@ -321,42 +330,136 @@ class Compiler:
                                         graph.add_edge(d, v)
                 return graph
 
+    def color_graph(
+        self, graph: UndirectedAdjList, vars: List[Variable]
+    ) -> Dict[Variable, int]:
+        color_mapping = {}
+        saturations = {}
+
+        register_to_integer = {
+            "rcx": 0,
+            "rdx": 1,
+            "rsi": 2,
+            "rdi": 3,
+            "r8": 4,
+            "r9": 5,
+            "r10": 6,
+            "rbx": 7,
+            "r12": 8,
+            "r13": 9,
+            "r14": 10,
+            "rax": -1,
+            "rsp": -2,
+            "rbp": -3,
+            "r11": -4,
+            "r15": -5,
+        }
+
+        def less(x, y):
+            return len(saturations[x.key]) < len(saturations[y.key])
+
+        queue = PriorityQueue(less)
+        for var in vars:
+            saturation = set()
+            adjacent_vertices = graph.adjacent(var)
+            for v in adjacent_vertices:
+                match v:
+                    case Reg(reg):
+                        saturation.add(register_to_integer[reg])
+
+            saturations[var] = saturation
+            queue.push(var)
+
+        def lowest_available_color(alredy_used_colors: List[int]):
+            color = 0
+            while color in alredy_used_colors:
+                color += 1
+            return color
+
+        while not queue.empty():
+            vertex = queue.pop()
+            reserved = saturations[vertex]
+            color = lowest_available_color(reserved)
+            color_mapping[vertex] = color
+            adjacent_vertices = graph.adjacent(vertex)
+            for adjacent_vertex in adjacent_vertices:
+                match adjacent_vertex:
+                    case Variable():
+                        saturations[adjacent_vertex].add(color)
+                        queue.increase_key(adjacent_vertex)
+        return color_mapping
+
     ############################################################################
     # Assign Homes
     ############################################################################
 
-    def assign_homes_arg(self, a: arg, home: Dict[Variable, arg]) -> arg:
+    def assign_homes_arg(
+        self, a: arg, home: Dict[Variable, int], available: int
+    ) -> arg:
         match a:
             case Variable():
-                if a in home:
-                    return home[a]
-
-                allocated = len(home)
-                new_home = Deref("rbp", -8 * (allocated + 1))
-                home[a] = new_home
-                return new_home
+                integer_to_register = {
+                    0: "rcx",
+                    1: "rdx",
+                    2: "rsi",
+                    3: "rdi",
+                    4: "r8",
+                    5: "r9",
+                    6: "r10",
+                    7: "rbx",
+                    8: "r12",
+                    9: "r13",
+                    10: "r14",
+                }
+                mapped = home[a]
+                if mapped < available:
+                    return Reg(integer_to_register[mapped])
+                else:
+                    return Deref("rbp", -8 * (mapped - available + 1))
             case _:
                 return a
 
-    def assign_homes_instr(self, i: instr, home: Dict[Variable, arg]) -> instr:
+    def assign_homes_instr(
+        self, i: instr, home: Dict[Variable, int], available: int
+    ) -> instr:
         match i:
             case Instr(cmd, [arg0, arg1]):
-                arg0 = self.assign_homes_arg(arg0, home)
-                arg1 = self.assign_homes_arg(arg1, home)
+                arg0 = self.assign_homes_arg(arg0, home, available)
+                arg1 = self.assign_homes_arg(arg1, home, available)
                 return Instr(cmd, [arg0, arg1])
             case Instr(cmd, [arg0]):
-                arg0 = self.assign_homes_arg(arg0, home)
+                arg0 = self.assign_homes_arg(arg0, home, available)
                 return Instr(cmd, [arg0])
             case _:
                 return i
 
-    def assign_homes(self, p: X86Program) -> X86Program:
+    def assign_homes(self, p: X86Program, available: int = 11) -> X86Program:
         match p:
             case X86Program(list() as body):
-                home = {}
-                new_body = [self.assign_homes_instr(instr, home) for instr in body]
-                stack_size = len(home) * 8
-                return X86Program(new_body, stack_size)
+                interference_graph = self.build_interference(p)
+                variables = [
+                    loc
+                    for loc in interference_graph.vertices()
+                    if isinstance(loc, Variable)
+                ]
+                home = self.color_graph(interference_graph, variables)
+                new_body = [
+                    self.assign_homes_instr(instr, home, available) for instr in body
+                ]
+                colors = home.values()
+                used_callee = [Reg("rbp")]
+                if len(colors) > 0:
+                    stack_size = max(max(colors) - available + 1, 0) * 8
+                    calee_saved_registers = [
+                        Reg("rbx"),
+                        Reg("r12"),
+                        Reg("r13"),
+                        Reg("r14"),
+                    ]
+                    used_callee.extend(calee_saved_registers[: max(max(colors) - 6, 0)])
+                else:
+                    stack_size = 0
+                return X86Program(new_body, stack_size, used_callee)
 
     ############################################################################
     # Patch Instructions
@@ -365,6 +468,8 @@ class Compiler:
     def patch_instr(self, i: instr) -> List[instr]:
         match i:
             case Instr("movq", [arg0, arg1]):
+                if arg0 == arg1:
+                    return []
                 match (arg0, arg1):
                     case (Deref(), Deref()):
                         return [
@@ -398,11 +503,11 @@ class Compiler:
 
     def patch_instructions(self, p: X86Program) -> X86Program:
         match p:
-            case X86Program(list() as body, stack_space):
+            case X86Program(list() as body, stack_space, used_callee):
                 new_body = []
                 for instr in body:
                     new_body = [*new_body, *self.patch_instr(instr)]
-                return X86Program(new_body, stack_space)
+                return X86Program(new_body, stack_space, used_callee)
 
     ############################################################################
     # Prelude & Conclusion
@@ -410,19 +515,38 @@ class Compiler:
 
     def prelude_and_conclusion(self, p: X86Program) -> X86Program:
         match p:
-            case X86Program(list() as body, stack_space):
-                if (stack_space) % 16 != 0:
-                    stack_space += 8
+            case X86Program(list() as body, stack_space, used_callee):
 
-                return X86Program(
-                    [
-                        Instr("pushq", [Reg("rbp")]),
-                        Instr("movq", [Reg("rsp"), Reg("rbp")]),
-                        Instr("subq", [Immediate(stack_space), Reg("rsp")]),
-                        *body,
-                        Instr("addq", [Immediate(stack_space), Reg("rsp")]),
-                        Instr("popq", [Reg("rbp")]),
-                        Instr("retq", []),
-                    ],
-                    stack_space,
-                )
+                align = lambda x: x + 8 if x % 16 != 0 else x
+                used_by_callee = len(used_callee) * 8 - 8
+                stack_space = align(stack_space + used_by_callee) - used_by_callee
+                if stack_space != 0:
+                    return X86Program(
+                        [
+                            *[
+                                Instr("pushq", [callee_saved_reg])
+                                for callee_saved_reg in used_callee
+                            ],
+                            Instr("movq", [Reg("rsp"), Reg("rbp")]),
+                            Instr("subq", [Immediate(stack_space), Reg("rsp")]),
+                            *body,
+                            Instr("addq", [Immediate(stack_space), Reg("rsp")]),
+                            *[
+                                Instr("popq", [callee_saved_reg])
+                                for callee_saved_reg in reversed(used_callee)
+                            ],
+                            Instr("retq", []),
+                        ],
+                        stack_space,
+                    )
+                else:
+                    return X86Program(
+                        [
+                            Instr("pushq", [Reg("rbp")]),
+                            Instr("movq", [Reg("rsp"), Reg("rbp")]),
+                            *body,
+                            Instr("popq", [Reg("rbp")]),
+                            Instr("retq", []),
+                        ],
+                        stack_space,
+                    )

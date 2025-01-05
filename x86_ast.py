@@ -11,6 +11,7 @@ from utils import dedent, indent, indent_stmt, label_name
 class X86Program:
     body: dict[str, list[instr]] | list[instr]
     stack_space: int = 0
+    used_callee: set[Reg] = None
 
     def __str__(self):
         result = ""
