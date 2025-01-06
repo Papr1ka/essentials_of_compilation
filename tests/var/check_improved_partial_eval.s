@@ -9,16 +9,16 @@ main:
     movq %rdx, %rdi
     callq print_int
     callq read_int
-    movq %rax, %rdx
-    movq $3, %rcx
-    subq %rdx, %rcx
-    movq %rcx, %rdi
+    movq %rax, %rcx
+    movq $3, %rdx
+    subq %rcx, %rdx
+    movq %rdx, %rdi
     callq print_int
     callq read_int
-    movq %rax, %rdx
-    movq $3, %rcx
-    addq %rdx, %rcx
-    movq %rcx, %rdi
+    movq %rax, %rcx
+    movq $3, %rdx
+    addq %rcx, %rdx
+    movq %rdx, %rdi
     callq print_int
     callq read_int
     movq %rax, %rcx

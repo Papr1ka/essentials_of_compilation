@@ -12,11 +12,10 @@ main:
     addq %rbx, %rdx
     movq $-2, %rsi
     addq %rcx, %rsi
-    movq %rdx, %rcx
-    subq %rsi, %rcx
-    movq $-3, %rdx
-    addq %rcx, %rdx
-    movq %rdx, %rdi
+    subq %rsi, %rdx
+    movq $-3, %rcx
+    addq %rdx, %rcx
+    movq %rcx, %rdi
     callq print_int
     addq $8, %rsp
     popq %rbx

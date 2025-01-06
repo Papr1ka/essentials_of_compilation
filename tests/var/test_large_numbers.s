@@ -17,9 +17,8 @@ main:
     addq %r13, %rbx
     movq %rbx, %rdi
     callq print_int
-    movq %r13, %rcx
-    subq %r14, %rcx
-    movq %rcx, %rdi
+    subq %r14, %r13
+    movq %r13, %rdi
     callq print_int
     popq %rbp
     retq 

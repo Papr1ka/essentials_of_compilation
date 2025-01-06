@@ -12,6 +12,8 @@ Temporaries = List[Binding]
 
 
 class Compiler:
+    def __init__(self, available: int = 11):
+        self.available = available
 
     ############################################################################
     # Partial Evaluation
@@ -308,7 +310,7 @@ class Compiler:
                 liveness = self.uncover_live(p)
                 graph = UndirectedAdjList(
                     vertex_label=lambda x: (
-                        str(x) if not str(x).startswith("%") else f"\{x}"
+                        str(x) if not str(x).startswith("%") else f"\\{x}"
                     )
                 )
                 for instr in body:
@@ -330,8 +332,21 @@ class Compiler:
                                         graph.add_edge(d, v)
                 return graph
 
+    def build_move_graph(self, p: X86Program) -> UndirectedAdjList:
+        match p:
+            case X86Program(list() as body):
+                graph = UndirectedAdjList()
+                for instr in body:
+                    match instr:
+                        case Instr("movq", [Variable() as s, Variable() as d]):
+                            graph.add_edge(s, d)
+                return graph
+
     def color_graph(
-        self, graph: UndirectedAdjList, vars: List[Variable]
+        self,
+        graph: UndirectedAdjList,
+        vars: List[Variable],
+        move_graph: UndirectedAdjList,
     ) -> Dict[Variable, int]:
         color_mapping = {}
         saturations = {}
@@ -355,8 +370,35 @@ class Compiler:
             "r15": -5,
         }
 
+        def lowest_available_color(alredy_used_colors: List[int]):
+            color = 0
+            while color in alredy_used_colors:
+                color += 1
+            return color
+
+        def available_move_related_color(x) -> int | None:
+            not_available = saturations[x]
+            related = move_graph.adjacent(x)
+            move_related_colors = [
+                color_mapping[var] for var in related if var in color_mapping
+            ]
+            min_available = lowest_available_color(not_available)
+            is_on_stack = lambda x: x >= self.available
+            is_on_reg = lambda x: x < self.available
+
+            for color in move_related_colors:
+                if color not in not_available and not (
+                    is_on_reg(min_available) and is_on_stack(color)
+                ):
+                    return color
+
         def less(x, y):
-            return len(saturations[x.key]) < len(saturations[y.key])
+            if len(saturations[x.key]) < len(saturations[y.key]):
+                return True
+            elif len(saturations[x.key]) == len(saturations[y.key]):
+                return available_move_related_color(y.key) is not None
+            else:
+                return False
 
         queue = PriorityQueue(less)
         for var in vars:
@@ -370,16 +412,16 @@ class Compiler:
             saturations[var] = saturation
             queue.push(var)
 
-        def lowest_available_color(alredy_used_colors: List[int]):
-            color = 0
-            while color in alredy_used_colors:
-                color += 1
-            return color
-
         while not queue.empty():
             vertex = queue.pop()
             reserved = saturations[vertex]
-            color = lowest_available_color(reserved)
+
+            available_color = available_move_related_color(vertex)
+            if available_color is not None:
+                color = available_color
+            else:
+                color = lowest_available_color(reserved)
+
             color_mapping[vertex] = color
             adjacent_vertices = graph.adjacent(vertex)
             for adjacent_vertex in adjacent_vertices:
@@ -393,9 +435,7 @@ class Compiler:
     # Assign Homes
     ############################################################################
 
-    def assign_homes_arg(
-        self, a: arg, home: Dict[Variable, int], available: int
-    ) -> arg:
+    def assign_homes_arg(self, a: arg, home: Dict[Variable, int]) -> arg:
         match a:
             case Variable():
                 integer_to_register = {
@@ -412,28 +452,26 @@ class Compiler:
                     10: "r14",
                 }
                 mapped = home[a]
-                if mapped < available:
+                if mapped < self.available:
                     return Reg(integer_to_register[mapped])
                 else:
-                    return Deref("rbp", -8 * (mapped - available + 1))
+                    return Deref("rbp", -8 * (mapped - self.available + 1))
             case _:
                 return a
 
-    def assign_homes_instr(
-        self, i: instr, home: Dict[Variable, int], available: int
-    ) -> instr:
+    def assign_homes_instr(self, i: instr, home: Dict[Variable, int]) -> instr:
         match i:
             case Instr(cmd, [arg0, arg1]):
-                arg0 = self.assign_homes_arg(arg0, home, available)
-                arg1 = self.assign_homes_arg(arg1, home, available)
+                arg0 = self.assign_homes_arg(arg0, home)
+                arg1 = self.assign_homes_arg(arg1, home)
                 return Instr(cmd, [arg0, arg1])
             case Instr(cmd, [arg0]):
-                arg0 = self.assign_homes_arg(arg0, home, available)
+                arg0 = self.assign_homes_arg(arg0, home)
                 return Instr(cmd, [arg0])
             case _:
                 return i
 
-    def assign_homes(self, p: X86Program, available: int = 11) -> X86Program:
+    def assign_homes(self, p: X86Program) -> X86Program:
         match p:
             case X86Program(list() as body):
                 interference_graph = self.build_interference(p)
@@ -442,14 +480,14 @@ class Compiler:
                     for loc in interference_graph.vertices()
                     if isinstance(loc, Variable)
                 ]
-                home = self.color_graph(interference_graph, variables)
-                new_body = [
-                    self.assign_homes_instr(instr, home, available) for instr in body
-                ]
+                home = self.color_graph(
+                    interference_graph, variables, self.build_move_graph(p)
+                )
+                new_body = [self.assign_homes_instr(instr, home) for instr in body]
                 colors = home.values()
                 used_callee = [Reg("rbp")]
                 if len(colors) > 0:
-                    stack_size = max(max(colors) - available + 1, 0) * 8
+                    stack_size = max(max(colors) - self.available + 1, 0) * 8
                     calee_saved_registers = [
                         Reg("rbx"),
                         Reg("r12"),

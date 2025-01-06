@@ -10,9 +10,8 @@ main:
     movq %rax, %rcx
     callq read_int
     movq %rax, %rcx
-    movq %rbx, %rdx
-    addq %rcx, %rdx
-    movq %rdx, %rdi
+    addq %rcx, %rbx
+    movq %rbx, %rdi
     callq print_int
     addq $8, %rsp
     popq %rbx

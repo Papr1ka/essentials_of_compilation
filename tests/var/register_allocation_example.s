@@ -7,11 +7,10 @@ main:
     movq $7, %rsi
     addq %rcx, %rsi
     movq %rsi, %rcx
-    addq %rdx, %rcx
-    movq %rsi, %rdx
-    negq %rdx
-    addq %rdx, %rcx
-    movq %rcx, %rdi
+    addq %rdx, %rsi
+    negq %rcx
+    addq %rcx, %rsi
+    movq %rsi, %rdi
     callq print_int
     popq %rbp
     retq 
