@@ -1,22 +1,33 @@
-	.globl main
-main:
-    pushq %rbp
-    movq %rsp, %rbp
-    movq $1, %rcx
-    addq %rcx, %rcx
-    movq %rcx, %rdx
-    addq %rcx, %rdx
+	.align 16
+conclusion:
+    popq %rbp
+    retq 
+
+	.align 16
+start:
+    movq $1, %rdx
+    addq %rdx, %rdx
+    movq %rdx, %rcx
     addq %rdx, %rcx
-    movq %rcx, %rdx
     addq %rcx, %rdx
     movq %rdx, %rcx
     addq %rdx, %rcx
     movq %rcx, %rdx
     addq %rcx, %rdx
-    addq %rdx, %rdx
+    movq %rdx, %rcx
     addq %rdx, %rcx
-    movq %rcx, %rdi
+    addq %rcx, %rcx
+    addq %rcx, %rdx
+    movq %rdx, %rdi
     callq print_int
-    popq %rbp
-    retq 
+    movq $0, %rax
+    jmp conclusion
+
+	.globl main
+	.align 16
+main:
+    pushq %rbp
+    movq %rsp, %rbp
+    jmp start
+
 

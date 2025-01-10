@@ -1,9 +1,22 @@
+	.align 16
+conclusion:
+    popq %rbp
+    retq 
+
+	.align 16
+start:
+    movq $40, %rcx
+    addq $2, %rcx
+    movq %rcx, %rdi
+    callq print_int
+    movq $0, %rax
+    jmp conclusion
+
 	.globl main
+	.align 16
 main:
     pushq %rbp
     movq %rsp, %rbp
-    movq $42, %rdi
-    callq print_int
-    popq %rbp
-    retq 
+    jmp start
+
 

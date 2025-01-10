@@ -1,6 +1,6 @@
 import ast
 from ast import *
-from graph import UndirectedAdjList
+from graph import UndirectedAdjList, DirectedAdjList, topological_sort, transpose
 from utils import *
 from x86_ast import *
 import os
@@ -499,7 +499,10 @@ class Compiler:
     def select_tail(self, t: stmt) -> list[instr]:
         match t:
             case Return(value):
-                return self.select_exp(value, Reg("rax"))
+                return [
+                    *self.select_exp(value, Reg("rax")),
+                    Jump(label_name("conclusion")),
+                ]
             case Goto(label):
                 return [Jump(label)]
             case If(
@@ -519,7 +522,7 @@ class Compiler:
     def select_instructions(self, p: CProgram) -> X86Program:
         match p:
             case CProgram(basic_blocks):
-                x86_basic_blocks = {}
+                x86_basic_blocks = {label_name("conclusion"): []}
                 for label, (*ss, tail) in basic_blocks.items():
                     block = []
                     for stmt in ss:
@@ -528,355 +531,462 @@ class Compiler:
                     x86_basic_blocks[label] = block
                 return X86Program(x86_basic_blocks, 0)
 
-    # ############################################################################
-    # # Liveness analysys
-    # ############################################################################
+    ############################################################################
+    # Liveness analysys
+    ############################################################################
 
-    # def compute_locations(self, a: arg) -> Set[location]:
-    #     match a:
-    #         case Reg() | Deref() | Variable():
-    #             return set([a])
-    #         case _:
-    #             return set()
+    def build_cfg_block(
+        self, block_label: str, block: list[instr], graph: DirectedAdjList
+    ):
+        for instr in block:
+            match instr:
+                case Jump(label):
+                    graph.add_edge(block_label, label)
+                case JumpIf(_, label):
+                    graph.add_edge(block_label, label)
 
-    # def compute_R(self, i: instr) -> Set[location]:
-    #     # set of locations instruction read from
-    #     match i:
-    #         case Instr("movq", [arg0, arg1]):
-    #             return self.compute_locations(arg0)
-    #         case Instr(_, [arg0, arg1]):
-    #             locs0 = self.compute_locations(arg0)
-    #             locs1 = self.compute_locations(arg1)
-    #             return locs0.union(locs1)
-    #         case Instr("negq" | "pushq", [arg0]):
-    #             return self.compute_locations(arg0)
-    #         case Callq(_, num_args):
-    #             return {0: set(), 1: set([Reg("rdi")])}[num_args]
-    #         case _:
-    #             return set()
+    def build_cfg(self, p: X86Program) -> DirectedAdjList:
+        match p:
+            case X86Program(basic_blocks):
+                graph = DirectedAdjList()
+                for label, block in basic_blocks.items():
+                    graph.add_vertex(label)
+                    self.build_cfg_block(label, block, graph)
+                return graph
 
-    # def compute_W(self, i: instr) -> Set[location]:
-    #     # set of locations instruction write to
-    #     match i:
-    #         case Instr(_, [arg0, arg1]):
-    #             return self.compute_locations(arg1)
-    #         case Instr("negq" | "popq", [arg0]):
-    #             return self.compute_locations(arg0)
-    #         case Callq():
-    #             return set(
-    #                 [
-    #                     Reg("rax"),
-    #                     Reg("rcx"),
-    #                     Reg("rdx"),
-    #                     Reg("rsi"),
-    #                     Reg("rdi"),
-    #                     Reg("r8"),
-    #                     Reg("r9"),
-    #                     Reg("r10"),
-    #                     Reg("r11"),
-    #                 ]
-    #             )
-    #         case _:
-    #             return set()
+    def compute_locations(self, a: arg) -> Set[location]:
+        match a:
+            case Reg() | Deref() | Variable() | ByteReg():
+                return set([a])
+            case _:
+                return set()
 
-    # def uncover_live(self, p: X86Program) -> Dict[instr, Set[location]]:
-    #     match p:
-    #         case X86Program(list() as body):
-    #             mapping = {}
-    #             l_after = set()
-    #             for instr in reversed(body):
-    #                 mapping[instr] = l_after
-    #                 read = self.compute_R(instr)
-    #                 write = self.compute_W(instr)
-    #                 l_before = l_after.difference(write).union(read)
-    #                 l_after = l_before
-    #             return mapping
+    def compute_R(self, i: instr) -> Set[location]:
+        # set of locations instruction read from
+        match i:
+            case Instr("movq" | "movzbq", [arg0, arg1]):
+                return self.compute_locations(arg0)
+            case Instr(_, [arg0, arg1]):
+                locs0 = self.compute_locations(arg0)
+                locs1 = self.compute_locations(arg1)
+                return locs0.union(locs1)
+            case Instr("negq" | "pushq", [arg0]):
+                return self.compute_locations(arg0)
+            case Callq(_, num_args):
+                return {0: set(), 1: set([Reg("rdi")])}[num_args]
+            case _:
+                return set()
 
-    # ############################################################################
-    # # Building interference graph
-    # ############################################################################
+    def compute_W(self, i: instr) -> Set[location]:
+        # set of locations instruction write to
+        match i:
+            case Instr("cmpq", [arg0, arg1]):
+                return set()
+            case Instr(_, [arg0, arg1]):
+                return self.compute_locations(arg1)
+            case Instr("negq" | "popq", [arg0]):
+                return self.compute_locations(arg0)
+            case Instr(str(instr), [arg0]) if instr.startswith("set"):
+                return self.compute_locations(arg0)
+            case Callq():
+                return set(
+                    [
+                        Reg("rax"),
+                        Reg("rcx"),
+                        Reg("rdx"),
+                        Reg("rsi"),
+                        Reg("rdi"),
+                        Reg("r8"),
+                        Reg("r9"),
+                        Reg("r10"),
+                        Reg("r11"),
+                    ]
+                )
+            case _:
+                return set()
 
-    # def build_interference(self, p: X86Program) -> UndirectedAdjList:
-    #     match p:
-    #         case X86Program(list() as body):
-    #             liveness = self.uncover_live(p)
-    #             graph = UndirectedAdjList(
-    #                 vertex_label=lambda x: (
-    #                     str(x) if not str(x).startswith("%") else f"\\{x}"
-    #                 )
-    #             )
-    #             for instr in body:
-    #                 live_after = liveness[instr]
-    #                 locations = self.compute_R(instr).union(self.compute_W(instr))
-    #                 for loc in locations:
-    #                     graph.add_vertex(loc)
+    def uncover_live_block(
+        self,
+        block: list[stmt],
+        mapping: dict[instr, set[location]],
+        live_before_block: dict[str, set[location]],
+    ) -> set[location]:
+        l_after = set()
+        l_before = l_after
+        for instr in reversed(block):
+            mapping[instr] = l_after
 
-    #                 match instr:
-    #                     case Instr("movq", [s, d]):
-    #                         for v in live_after:
-    #                             if v != s and v != d:
-    #                                 graph.add_edge(d, v)
-    #                     case _:
-    #                         write_to = self.compute_W(instr)
-    #                         for d in write_to:
-    #                             for v in live_after:
-    #                                 if v != d:
-    #                                     graph.add_edge(d, v)
-    #             return graph
+            match instr:
+                case Jump(label):
+                    l_before = live_before_block[label]
+                case JumpIf(_, label):
+                    l_before = live_before_block[label].union(l_before)
+                case _:
+                    read = self.compute_R(instr)
+                    write = self.compute_W(instr)
+                    l_before = l_after.difference(write).union(read)
 
-    # def build_move_graph(self, p: X86Program) -> UndirectedAdjList:
-    #     match p:
-    #         case X86Program(list() as body):
-    #             graph = UndirectedAdjList()
-    #             for instr in body:
-    #                 match instr:
-    #                     case Instr("movq", [Variable() as s, Variable() as d]):
-    #                         graph.add_edge(s, d)
-    #             return graph
+            l_after = l_before
+        return l_before
 
-    # def color_graph(
-    #     self,
-    #     graph: UndirectedAdjList,
-    #     vars: List[Variable],
-    #     move_graph: UndirectedAdjList,
-    # ) -> Dict[Variable, int]:
-    #     color_mapping = {}
-    #     saturations = {}
+    def uncover_live(self, p: X86Program) -> Dict[instr, Set[location]]:
+        match p:
+            case X86Program(dict() as basic_blocks):
+                cfg = self.build_cfg(p)
+                transposed_cfg = transpose(cfg)
+                ordering: list[str] = topological_sort(transposed_cfg)
+                live_before_block = {}
 
-    #     register_to_integer = {
-    #         "rcx": 0,
-    #         "rdx": 1,
-    #         "rsi": 2,
-    #         "rdi": 3,
-    #         "r8": 4,
-    #         "r9": 5,
-    #         "r10": 6,
-    #         "rbx": 7,
-    #         "r12": 8,
-    #         "r13": 9,
-    #         "r14": 10,
-    #         "rax": -1,
-    #         "rsp": -2,
-    #         "rbp": -3,
-    #         "r11": -4,
-    #         "r15": -5,
-    #     }
+                mapping = {}
+                for block_label in ordering:
+                    block = basic_blocks[block_label]
+                    l_before = self.uncover_live_block(
+                        block, mapping, live_before_block
+                    )
+                    live_before_block[block_label] = l_before
+                return mapping
 
-    #     def lowest_available_color(alredy_used_colors: List[int]):
-    #         color = 0
-    #         while color in alredy_used_colors:
-    #             color += 1
-    #         return color
+    ############################################################################
+    # Collect all variables
+    ############################################################################
 
-    #     def available_move_related_color(x) -> int | None:
-    #         not_available = saturations[x]
-    #         related = move_graph.adjacent(x)
-    #         move_related_colors = [
-    #             color_mapping[var] for var in related if var in color_mapping
-    #         ]
-    #         min_available = lowest_available_color(not_available)
-    #         is_on_stack = lambda x: x >= self.available
-    #         is_on_reg = lambda x: x < self.available
+    def collect_vars_arg(self, a: arg) -> list[Variable]:
+        match a:
+            case Variable():
+                return [a]
+            case _:
+                return []
 
-    #         for color in move_related_colors:
-    #             if color not in not_available and not (
-    #                 is_on_reg(min_available) and is_on_stack(color)
-    #             ):
-    #                 return color
+    def collect_vars_instr(self, i: instr):
+        match i:
+            case Instr(_, [arg0, arg1]):
+                return self.collect_vars_arg(arg0) + self.collect_vars_arg(arg1)
+            case Instr(_, [arg0]):
+                return self.collect_vars_arg(arg0)
+            case _:
+                return []
 
-    #     def less(x, y):
-    #         if len(saturations[x.key]) < len(saturations[y.key]):
-    #             return True
-    #         elif len(saturations[x.key]) == len(saturations[y.key]):
-    #             return available_move_related_color(y.key) is not None
-    #         else:
-    #             return False
+    def collect_vars(self, p: X86Program) -> List[Variable]:
+        match p:
+            case X86Program(dict() as basic_blocks):
+                variables = set()
+                for block in basic_blocks.values():
+                    for instr in block:
+                        variables = variables.union(self.collect_vars_instr(instr))
+                return variables
 
-    #     queue = PriorityQueue(less)
-    #     for var in vars:
-    #         saturation = set()
-    #         adjacent_vertices = graph.adjacent(var)
-    #         for v in adjacent_vertices:
-    #             match v:
-    #                 case Reg(reg):
-    #                     saturation.add(register_to_integer[reg])
+    ############################################################################
+    # Building interference graph
+    ############################################################################
 
-    #         saturations[var] = saturation
-    #         queue.push(var)
+    def build_interference(self, p: X86Program) -> UndirectedAdjList:
+        match p:
+            case X86Program(dict() as basic_blocks):
+                liveness = self.uncover_live(p)
+                graph = UndirectedAdjList(
+                    vertex_label=lambda x: (
+                        str(x) if not str(x).startswith("%") else f"\\{x}"
+                    )
+                )
 
-    #     while not queue.empty():
-    #         vertex = queue.pop()
-    #         reserved = saturations[vertex]
+                for block in basic_blocks.values():
+                    for instr in block:
+                        live_after = liveness[instr]
 
-    #         available_color = available_move_related_color(vertex)
-    #         if available_color is not None:
-    #             color = available_color
-    #         else:
-    #             color = lowest_available_color(reserved)
+                        match instr:
+                            case Instr("movq" | "movzbq", [s, d]):
+                                for v in live_after:
+                                    if v != s and v != d:
+                                        graph.add_edge(d, v)
+                            case _:
+                                write_to = self.compute_W(instr)
+                                for d in write_to:
+                                    for v in live_after:
+                                        if v != d:
+                                            graph.add_edge(d, v)
+                return graph
 
-    #         color_mapping[vertex] = color
-    #         adjacent_vertices = graph.adjacent(vertex)
-    #         for adjacent_vertex in adjacent_vertices:
-    #             match adjacent_vertex:
-    #                 case Variable():
-    #                     saturations[adjacent_vertex].add(color)
-    #                     queue.increase_key(adjacent_vertex)
-    #     return color_mapping
+    def build_move_graph(self, p: X86Program) -> UndirectedAdjList:
+        match p:
+            case X86Program(dict() as basic_blocks):
+                graph = UndirectedAdjList()
+                for block in basic_blocks.values():
+                    for instr in block:
+                        match instr:
+                            case Instr("movq", [Variable() as s, Variable() as d]):
+                                graph.add_edge(s, d)
+                return graph
 
-    # ############################################################################
-    # # Assign Homes
-    # ############################################################################
+    def color_graph(
+        self,
+        graph: UndirectedAdjList,
+        vars: Iterable[Variable],
+        move_graph: UndirectedAdjList,
+    ) -> Dict[Variable, int]:
+        color_mapping = {}
+        saturations = {}
 
-    # def assign_homes_arg(self, a: arg, home: Dict[Variable, int]) -> arg:
-    #     match a:
-    #         case Variable():
-    #             integer_to_register = {
-    #                 0: "rcx",
-    #                 1: "rdx",
-    #                 2: "rsi",
-    #                 3: "rdi",
-    #                 4: "r8",
-    #                 5: "r9",
-    #                 6: "r10",
-    #                 7: "rbx",
-    #                 8: "r12",
-    #                 9: "r13",
-    #                 10: "r14",
-    #             }
-    #             mapped = home[a]
-    #             if mapped < self.available:
-    #                 return Reg(integer_to_register[mapped])
-    #             else:
-    #                 return Deref("rbp", -8 * (mapped - self.available + 1))
-    #         case _:
-    #             return a
+        register_to_integer = {
+            "rcx": 0,
+            "rdx": 1,
+            "rsi": 2,
+            "rdi": 3,
+            "r8": 4,
+            "r9": 5,
+            "r10": 6,
+            "rbx": 7,
+            "r12": 8,
+            "r13": 9,
+            "r14": 10,
+            "rax": -1,
+            "rsp": -2,
+            "rbp": -3,
+            "r11": -4,
+            "r15": -5,
+            "al": -1,
+        }
 
-    # def assign_homes_instr(self, i: instr, home: Dict[Variable, int]) -> instr:
-    #     match i:
-    #         case Instr(cmd, [arg0, arg1]):
-    #             arg0 = self.assign_homes_arg(arg0, home)
-    #             arg1 = self.assign_homes_arg(arg1, home)
-    #             return Instr(cmd, [arg0, arg1])
-    #         case Instr(cmd, [arg0]):
-    #             arg0 = self.assign_homes_arg(arg0, home)
-    #             return Instr(cmd, [arg0])
-    #         case _:
-    #             return i
+        def lowest_available_color(alredy_used_colors: List[int]):
+            color = 0
+            while color in alredy_used_colors:
+                color += 1
+            return color
 
-    # def assign_homes(self, p: X86Program) -> X86Program:
-    #     match p:
-    #         case X86Program(list() as body):
-    #             interference_graph = self.build_interference(p)
-    #             variables = [
-    #                 loc
-    #                 for loc in interference_graph.vertices()
-    #                 if isinstance(loc, Variable)
-    #             ]
-    #             home = self.color_graph(
-    #                 interference_graph, variables, self.build_move_graph(p)
-    #             )
-    #             new_body = [self.assign_homes_instr(instr, home) for instr in body]
-    #             colors = home.values()
-    #             used_callee = [Reg("rbp")]
-    #             if len(colors) > 0:
-    #                 stack_size = max(max(colors) - self.available + 1, 0) * 8
-    #                 calee_saved_registers = [
-    #                     Reg("rbx"),
-    #                     Reg("r12"),
-    #                     Reg("r13"),
-    #                     Reg("r14"),
-    #                 ]
-    #                 used_callee.extend(calee_saved_registers[: max(max(colors) - 6, 0)])
-    #             else:
-    #                 stack_size = 0
-    #             return X86Program(new_body, stack_size, used_callee)
+        def available_move_related_color(x) -> int | None:
+            not_available = saturations[x]
+            related = move_graph.adjacent(x)
+            move_related_colors = [
+                color_mapping[var] for var in related if var in color_mapping
+            ]
+            min_available = lowest_available_color(not_available)
+            is_on_stack = lambda x: x >= self.available
+            is_on_reg = lambda x: x < self.available
 
-    # ############################################################################
-    # # Patch Instructions
-    # ############################################################################
+            for color in move_related_colors:
+                if color not in not_available and not (
+                    is_on_reg(min_available) and is_on_stack(color)
+                ):
+                    return color
 
-    # def patch_instr(self, i: instr) -> List[instr]:
-    #     match i:
-    #         case Instr("movq", [arg0, arg1]):
-    #             if arg0 == arg1:
-    #                 return []
-    #             match (arg0, arg1):
-    #                 case (Deref(), Deref()):
-    #                     return [
-    #                         Instr("movq", [arg0, Reg("rax")]),
-    #                         Instr("movq", [Reg("rax"), arg1]),
-    #                     ]
-    #                 case (Immediate(value), Deref()) if value > 2**16:
-    #                     return [
-    #                         Instr("movq", [arg0, Reg("rax")]),
-    #                         Instr("movq", [Reg("rax"), arg1]),
-    #                     ]
-    #                 case _:
-    #                     return [i]
-    #         case Instr(cmd, [arg0, arg1]):
-    #             match (arg0, arg1):
-    #                 case (Deref(), Deref()):
-    #                     return [
-    #                         Instr("movq", [arg1, Reg("rax")]),
-    #                         Instr(cmd, [arg0, Reg("rax")]),
-    #                         Instr("movq", [Reg("rax"), arg1]),
-    #                     ]
-    #                 case (Immediate(value), Deref()) if value > 2**16:
-    #                     return [
-    #                         Instr("movq", [arg0, Reg("rax")]),
-    #                         Instr(cmd, [Reg("rax"), arg1]),
-    #                     ]
-    #                 case _:
-    #                     return [i]
-    #         case _:
-    #             return [i]
+        def less(x, y):
+            if len(saturations[x.key]) < len(saturations[y.key]):
+                return True
+            elif len(saturations[x.key]) == len(saturations[y.key]):
+                return available_move_related_color(y.key) is not None
+            else:
+                return False
 
-    # def patch_instructions(self, p: X86Program) -> X86Program:
-    #     match p:
-    #         case X86Program(list() as body, stack_space, used_callee):
-    #             new_body = []
-    #             for instr in body:
-    #                 new_body = [*new_body, *self.patch_instr(instr)]
-    #             return X86Program(new_body, stack_space, used_callee)
+        queue = PriorityQueue(less)
+        for var in vars:
+            saturation = set()
+            adjacent_vertices = graph.adjacent(var)
+            for v in adjacent_vertices:
+                match v:
+                    case Reg(reg):
+                        saturation.add(register_to_integer[reg])
 
-    # ############################################################################
-    # # Prelude & Conclusion
-    # ############################################################################
+            saturations[var] = saturation
+            queue.push(var)
 
-    # def prelude_and_conclusion(self, p: X86Program) -> X86Program:
-    #     match p:
-    #         case X86Program(list() as body, stack_space, used_callee):
+        while not queue.empty():
+            vertex = queue.pop()
+            reserved = saturations[vertex]
 
-    #             align = lambda x: x + 8 if x % 16 != 0 else x
-    #             used_by_callee = len(used_callee) * 8 - 8
-    #             stack_space = align(stack_space + used_by_callee) - used_by_callee
-    #             if stack_space != 0:
-    #                 return X86Program(
-    #                     [
-    #                         *[
-    #                             Instr("pushq", [callee_saved_reg])
-    #                             for callee_saved_reg in used_callee
-    #                         ],
-    #                         Instr("movq", [Reg("rsp"), Reg("rbp")]),
-    #                         Instr("subq", [Immediate(stack_space), Reg("rsp")]),
-    #                         *body,
-    #                         Instr("addq", [Immediate(stack_space), Reg("rsp")]),
-    #                         *[
-    #                             Instr("popq", [callee_saved_reg])
-    #                             for callee_saved_reg in reversed(used_callee)
-    #                         ],
-    #                         Instr("retq", []),
-    #                     ],
-    #                     stack_space,
-    #                 )
-    #             else:
-    #                 return X86Program(
-    #                     [
-    #                         Instr("pushq", [Reg("rbp")]),
-    #                         Instr("movq", [Reg("rsp"), Reg("rbp")]),
-    #                         *body,
-    #                         Instr("popq", [Reg("rbp")]),
-    #                         Instr("retq", []),
-    #                     ],
-    #                     stack_space,
-    #                 )
+            available_color = available_move_related_color(vertex)
+            if available_color is not None:
+                color = available_color
+            else:
+                color = lowest_available_color(reserved)
+
+            color_mapping[vertex] = color
+            adjacent_vertices = graph.adjacent(vertex)
+            for adjacent_vertex in adjacent_vertices:
+                match adjacent_vertex:
+                    case Variable():
+                        saturations[adjacent_vertex].add(color)
+                        queue.increase_key(adjacent_vertex)
+        return color_mapping
+
+    ############################################################################
+    # Assign Homes
+    ############################################################################
+
+    def assign_homes_arg(self, a: arg, home: Dict[Variable, int]) -> arg:
+        match a:
+            case Variable():
+                integer_to_register = {
+                    0: "rcx",
+                    1: "rdx",
+                    2: "rsi",
+                    3: "rdi",
+                    4: "r8",
+                    5: "r9",
+                    6: "r10",
+                    7: "rbx",
+                    8: "r12",
+                    9: "r13",
+                    10: "r14",
+                }
+                mapped = home[a]
+                if mapped < self.available:
+                    return Reg(integer_to_register[mapped])
+                else:
+                    return Deref("rbp", -8 * (mapped - self.available + 1))
+            case _:
+                return a
+
+    def assign_homes_instr(self, i: instr, home: Dict[Variable, int]) -> instr:
+        match i:
+            case Instr(cmd, [arg0, arg1]):
+                arg0 = self.assign_homes_arg(arg0, home)
+                arg1 = self.assign_homes_arg(arg1, home)
+                return Instr(cmd, [arg0, arg1])
+            case Instr(cmd, [arg0]):
+                arg0 = self.assign_homes_arg(arg0, home)
+                return Instr(cmd, [arg0])
+            case _:
+                return i
+
+    def assign_homes(self, p: X86Program) -> X86Program:
+        match p:
+            case X86Program(dict() as basic_blocks):
+                interference_graph = self.build_interference(p)
+                variables = self.collect_vars(p)
+                home = self.color_graph(
+                    interference_graph, variables, self.build_move_graph(p)
+                )
+                new_blocks = {}
+                for label, block in basic_blocks.items():
+                    new_block_body = [
+                        self.assign_homes_instr(instr, home) for instr in block
+                    ]
+                    new_blocks[label] = new_block_body
+
+                colors = home.values()
+
+                used_callee = [Reg("rbp")]
+                if len(colors) > 0:
+                    stack_size = max(max(colors) - self.available + 1, 0) * 8
+                    calee_saved_registers = [
+                        Reg("rbx"),
+                        Reg("r12"),
+                        Reg("r13"),
+                        Reg("r14"),
+                    ]
+                    used_callee.extend(calee_saved_registers[: max(max(colors) - 6, 0)])
+                else:
+                    stack_size = 0
+                return X86Program(new_blocks, stack_size, used_callee)
+
+    ############################################################################
+    # Patch Instructions
+    ############################################################################
+
+    def patch_instr(self, i: instr) -> List[instr]:
+        match i:
+            case Instr("cmpq", [arg0, arg1]):
+                match (arg0, arg1):
+                    case (Deref(), Deref()) | (_, Immediate()):
+                        return [
+                            Instr("movq", [arg1, Reg("rax")]),
+                            Instr("cmpq", [arg0, Reg("rax")]),
+                        ]
+                    case (Immediate(value), Deref()) if value > 2**16:
+                        return [
+                            Instr("movq", [arg0, Reg("rax")]),
+                            Instr("cmpq", [Reg("rax"), arg1]),
+                        ]
+                    case _:
+                        return [i]
+            case Instr("movzbq", [arg0, arg1]):
+                match (arg0, arg1):
+                    case (_, Reg()):
+                        return [i]
+                    case _:
+                        return [
+                            Instr("movzbq", [arg0, Reg("rax")]),
+                            Instr("movq", [Reg("rax"), arg1]),
+                        ]
+            case Instr("movq", [arg0, arg1]):
+                if arg0 == arg1:
+                    return []
+                match (arg0, arg1):
+                    case (Deref(), Deref()):
+                        return [
+                            Instr("movq", [arg0, Reg("rax")]),
+                            Instr("movq", [Reg("rax"), arg1]),
+                        ]
+                    case (Immediate(value), Deref()) if value > 2**16:
+                        return [
+                            Instr("movq", [arg0, Reg("rax")]),
+                            Instr("movq", [Reg("rax"), arg1]),
+                        ]
+                    case _:
+                        return [i]
+            case Instr(cmd, [arg0, arg1]):
+                match (arg0, arg1):
+                    case (Deref(), Deref()):
+                        return [
+                            Instr("movq", [arg1, Reg("rax")]),
+                            Instr(cmd, [arg0, Reg("rax")]),
+                            Instr("movq", [Reg("rax"), arg1]),
+                        ]
+                    case (Immediate(value), Deref()) if value > 2**16:
+                        return [
+                            Instr("movq", [arg0, Reg("rax")]),
+                            Instr(cmd, [Reg("rax"), arg1]),
+                        ]
+                    case _:
+                        return [i]
+            case _:
+                return [i]
+
+    def patch_instructions(self, p: X86Program) -> X86Program:
+        match p:
+            case X86Program(dict() as basic_blocks, stack_space, used_callee):
+                new_blocks = {}
+                for label, block in basic_blocks.items():
+                    new_block_body = []
+                    for instr in block:
+                        new_block_body += self.patch_instr(instr)
+                    new_blocks[label] = new_block_body
+                return X86Program(new_blocks, stack_space, used_callee)
+
+    ############################################################################
+    # Prelude & Conclusion
+    ############################################################################
+
+    def prelude_and_conclusion(self, p: X86Program) -> X86Program:
+        match p:
+            case X86Program(dict() as basic_blocks, stack_space, used_callee):
+
+                align = lambda x: x + 8 if x % 16 != 0 else x
+                used_by_callee = len(used_callee) * 8 - 8
+                stack_space = align(stack_space + used_by_callee) - used_by_callee
+                prelude = [
+                    *[
+                        Instr("pushq", [callee_saved_reg])
+                        for callee_saved_reg in used_callee
+                    ],
+                    Instr("movq", [Reg("rsp"), Reg("rbp")]),
+                    Jump("start"),
+                ]
+                conclusion = [
+                    *[
+                        Instr("popq", [callee_saved_reg])
+                        for callee_saved_reg in reversed(used_callee)
+                    ],
+                    Instr("retq", []),
+                ]
+                if stack_space != 0:
+                    prelude.insert(
+                        -1, Instr("subq", [Immediate(stack_space), Reg("rsp")])
+                    )
+                    conclusion.insert(
+                        0, Instr("addq", [Immediate(stack_space), Reg("rsp")])
+                    )
+
+                basic_blocks[label_name("main")] = prelude
+                basic_blocks[label_name("conclusion")] = conclusion
+
+                return X86Program(basic_blocks, stack_space)
