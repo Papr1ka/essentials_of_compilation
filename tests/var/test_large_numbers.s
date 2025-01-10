@@ -10,22 +10,22 @@ conclusion:
 	.align 16
 start:
     callq read_int
-    movq %rax, %r12
-    movq $71854, %r13
+    movq %rax, %r13
+    movq $71854, %r12
     callq read_int
-    movq %rax, %rbx
-    movq %r12, %rcx
-    addq %r13, %rcx
-    addq %rbx, %rcx
+    movq %rax, %r14
+    movq %r13, %rcx
+    addq %r12, %rcx
+    addq %r14, %rcx
     movq %rcx, %rdi
     callq print_int
-    movq %r12, %r14
-    movq %r13, %r12
-    addq %rbx, %r12
-    movq %r12, %rdi
+    movq %r13, %rbx
+    movq %r12, %r13
+    addq %r14, %r13
+    movq %r13, %rdi
     callq print_int
-    subq %r14, %rbx
-    movq %rbx, %rdi
+    subq %rbx, %r14
+    movq %r14, %rdi
     callq print_int
     movq $0, %rax
     jmp conclusion

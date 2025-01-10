@@ -15,11 +15,11 @@ start:
     movq %rdx, %rdi
     callq print_int
     callq read_int
-    movq %rax, %rcx
-    addq $2, %rcx
-    movq $5, %rdx
-    subq %rcx, %rdx
-    movq %rdx, %rdi
+    movq %rax, %rdx
+    addq $2, %rdx
+    movq $5, %rcx
+    subq %rdx, %rcx
+    movq %rcx, %rdi
     callq print_int
     callq read_int
     movq %rax, %rcx

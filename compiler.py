@@ -4,21 +4,56 @@ from graph import UndirectedAdjList, DirectedAdjList, topological_sort, transpos
 from utils import *
 from x86_ast import *
 import os
-from typing import List, Tuple, Set, Dict
+from typing import Any, List, Tuple, Set, Dict
 from priority_queue import PriorityQueue
+
+
+@dataclass
+class Promise:
+    fun: Any
+    cache: list[stmt] = None
+
+    def force(self):
+        if self.cache is None:
+            self.cache = self.fun()
+        return self.cache
+
+
+def force(promise: list[stmt] | Promise) -> list[stmt]:
+    if isinstance(promise, Promise):
+        return promise.force()
+    return promise
+
+
+# def create_block(stmts, basic_blocks) -> List[stmt]:
+#     match stmts:
+#         case [Goto(l)]:
+#             return stmts
+#         case _:
+#             label = label_name(generate_name("block"))
+#             basic_blocks[label] = stmts
+#             return [Goto(label)]
+
+
+def create_block(
+    promise: list[stmt] | Promise, basic_blocks: dict[str, list[stmt]]
+) -> Promise:
+    def delay():
+        stmts = force(promise)
+        match stmts:
+            case [Goto(l)]:
+                return stmts
+            case _:
+                label = label_name(generate_name("block"))
+                basic_blocks[label] = stmts
+                return [Goto(label)]
+
+    return Promise(delay)
+
 
 Binding = Tuple[Name, expr]
 Temporaries = List[Binding]
-
-
-def create_block(stmts, basic_blocks) -> List[stmt]:
-    match stmts:
-        case [Goto(l)]:
-            return stmts
-        case _:
-            label = label_name(generate_name("block"))
-            basic_blocks[label] = stmts
-            return [Goto(label)]
+LazySS = Promise | list[stmt]
 
 
 cmd_to_cc_mapping = {
@@ -278,33 +313,36 @@ class Compiler:
     ############################################################################
 
     def explicate_effect(
-        self, e: expr, cont: list[stmt], basic_blocks: dict[str, list[stmt]]
-    ) -> List[stmt]:
+        self, e: expr, cont: LazySS, basic_blocks: dict[str, list[stmt]]
+    ) -> LazySS:
         match e:
             case IfExp(test, body, orelse):
                 next_block = create_block(cont, basic_blocks)
                 new_body = self.explicate_effect(body, next_block, basic_blocks)
                 new_orelse = self.explicate_effect(orelse, next_block, basic_blocks)
-                return (
-                    self.explicate_pred(test, new_body, new_orelse, basic_blocks) + cont
+                return Promise(
+                    lambda: self.explicate_pred(
+                        test, new_body, new_orelse, basic_blocks
+                    )
+                    + force(cont)
                 )
             case Call(Name("input_int"), []):
-                return [Expr(e)] + cont
+                return Promise(lambda: [Expr(e)] + force(cont))
             case Begin(body, result):
                 new_body = self.explicate_effect(result, cont, basic_blocks)
                 for stmt in reversed(body):
                     new_body = self.explicate_stmt(stmt, new_body, basic_blocks)
                 return new_body
             case _:
-                return cont
+                return Promise(lambda: force(cont))
 
     def explicate_assign(
         self,
         rhs: expr,
         lhs: Name,
-        cont: list[stmt],
+        cont: LazySS,
         basic_blocks: dict[str, list[stmt]],
-    ) -> List[stmt]:
+    ) -> LazySS:
         match rhs:
             case IfExp(test, body, orelse):
                 next_block = create_block(cont, basic_blocks)
@@ -320,20 +358,20 @@ class Compiler:
                     new_body = self.explicate_stmt(stmt, new_body, basic_blocks)
                 return new_body
             case _:
-                return [Assign([lhs], rhs)] + cont
+                return Promise(lambda: [Assign([lhs], rhs)] + force(cont))
 
     def explicate_pred(
         self,
         cnd: expr,
-        thn: list[stmt],
-        els: list[stmt],
+        thn: LazySS,
+        els: LazySS,
         basic_blocks: dict[str, list[stmt]],
-    ) -> List[stmt]:
+    ) -> LazySS:
         match cnd:
             case Compare(_, [_], [_]):
                 goto_thn = create_block(thn, basic_blocks)
                 goto_els = create_block(els, basic_blocks)
-                return [If(cnd, goto_thn, goto_els)]
+                return Promise(lambda: [If(cnd, force(goto_thn), force(goto_els))])
             case Constant(True):
                 return thn
             case Constant(False):
@@ -354,22 +392,24 @@ class Compiler:
                     new_body = self.explicate_stmt(stmt, new_body, basic_blocks)
                 return new_body
             case _:
-                return [
-                    If(
-                        Compare(cnd, [Eq()], [Constant(False)]),
-                        create_block(els, basic_blocks),
-                        create_block(thn, basic_blocks),
-                    )
-                ]
+                return Promise(
+                    lambda: [
+                        If(
+                            Compare(cnd, [Eq()], [Constant(False)]),
+                            force(create_block(els, basic_blocks)),
+                            force(create_block(thn, basic_blocks)),
+                        )
+                    ]
+                )
 
     def explicate_stmt(
-        self, s: stmt, cont: list[stmt], basic_blocks: dict[str, list[stmt]]
-    ) -> List[stmt]:
+        self, s: stmt, cont: LazySS, basic_blocks: dict[str, list[stmt]]
+    ) -> LazySS:
         match s:
             case Assign([lhs], rhs):
                 return self.explicate_assign(rhs, lhs, cont, basic_blocks)
             case Expr(Call(Name("print"), [_])):
-                return [s] + cont
+                return Promise(lambda: [s] + force(cont))
             case Expr(value):
                 return self.explicate_effect(value, cont, basic_blocks)
             case If(test, body, orelse):
@@ -390,13 +430,13 @@ class Compiler:
                 new_body = [Return(Constant(0))]
                 basic_blocks = {}
                 for s in reversed(body):
-                    new_body = self.explicate_stmt(s, new_body, basic_blocks)
+                    new_body = force(self.explicate_stmt(s, new_body, basic_blocks))
                 basic_blocks[label_name("start")] = new_body
                 return CProgram(basic_blocks)
 
-    # ############################################################################
-    # # Select Instructions
-    # ############################################################################
+    ############################################################################
+    # Select Instructions
+    ############################################################################
 
     # The expression e passed to select_arg should furthermore be an atom.
     # (But there is no type for atoms, so the type of e is given as expr.)

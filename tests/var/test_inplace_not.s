@@ -6,57 +6,57 @@ conclusion:
     retq 
 
 	.align 16
-block.198:
+block.197:
     movq %rcx, %rdi
     callq print_int
     movq $0, %rax
     jmp conclusion
 
 	.align 16
-block.199:
+block.198:
     movq $1, %rcx
-    jmp block.198
+    jmp block.197
+
+	.align 16
+block.199:
+    movq $0, %rcx
+    jmp block.197
 
 	.align 16
 block.200:
-    movq $0, %rcx
-    jmp block.198
-
-	.align 16
-block.201:
     xorq $1, %rcx
     xorq $1, %rcx
     cmpq $1, %rcx
-    je block.199
+    je block.198
+    jmp block.199
+
+	.align 16
+block.201:
+    movq $1, %rcx
     jmp block.200
 
 	.align 16
 block.202:
-    movq $1, %rcx
-    jmp block.201
+    movq %rdx, %rcx
+    xorq $1, %rcx
+    jmp block.200
 
 	.align 16
 block.203:
-    movq %rdx, %rcx
-    xorq $1, %rcx
-    jmp block.201
+    cmpq $0, %rbx
+    je block.201
+    jmp block.202
 
 	.align 16
 block.204:
-    cmpq $0, %rbx
-    je block.202
+    movq %rdx, %rcx
+    xorq $1, %rcx
     jmp block.203
 
 	.align 16
 block.205:
-    movq %rdx, %rcx
-    xorq $1, %rcx
-    jmp block.204
-
-	.align 16
-block.206:
     movq $0, %rcx
-    jmp block.204
+    jmp block.203
 
 	.align 16
 start:
@@ -74,8 +74,8 @@ start:
     movq %rbx, %rdx
     xorq $1, %rdx
     cmpq $0, %rbx
-    je block.205
-    jmp block.206
+    je block.204
+    jmp block.205
 
 	.globl main
 	.align 16

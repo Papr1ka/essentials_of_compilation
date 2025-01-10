@@ -18,13 +18,15 @@ block.80:
 
 	.align 16
 block.81:
-    subq %rcx, %rbx
-    jmp block.80
+    movq %rbx, %rdi
+    callq print_int
+    jmp block.79
 
 	.align 16
 block.82:
-    subq %rbx, %rcx
-    jmp block.80
+    movq %rbx, %rdi
+    callq print_int
+    jmp block.79
 
 	.align 16
 block.83:
@@ -34,65 +36,63 @@ block.83:
 
 	.align 16
 block.84:
-    cmpq %rcx, %rbx
-    jg block.81
-    jmp block.82
+    subq %rcx, %rbx
+    jmp block.83
 
 	.align 16
 block.85:
-    cmpq %rcx, %rbx
-    je block.83
-    jmp block.84
+    subq %rbx, %rcx
+    jmp block.83
 
 	.align 16
 block.86:
-    subq %rcx, %rbx
+    cmpq %rcx, %rbx
+    jg block.84
     jmp block.85
 
 	.align 16
 block.87:
-    subq %rbx, %rcx
-    jmp block.85
+    cmpq %rcx, %rbx
+    je block.82
+    jmp block.86
 
 	.align 16
 block.88:
-    movq %rbx, %rdi
-    callq print_int
-    jmp block.79
+    subq %rcx, %rbx
+    jmp block.87
 
 	.align 16
 block.89:
-    cmpq %rcx, %rbx
-    jg block.86
+    subq %rbx, %rcx
     jmp block.87
 
 	.align 16
 block.90:
     cmpq %rcx, %rbx
-    je block.88
+    jg block.88
     jmp block.89
 
 	.align 16
 block.91:
-    subq %rcx, %rbx
+    cmpq %rcx, %rbx
+    je block.81
     jmp block.90
 
 	.align 16
 block.92:
-    subq %rbx, %rcx
-    jmp block.90
+    subq %rcx, %rbx
+    jmp block.91
 
 	.align 16
 block.93:
-    movq %rbx, %rdi
-    callq print_int
-    jmp block.79
+    subq %rbx, %rcx
+    jmp block.91
 
 	.align 16
 block.94:
     cmpq %rcx, %rbx
-    jg block.91
-    jmp block.92
+    jg block.92
+    jmp block.93
 
 	.align 16
 start:
@@ -101,7 +101,7 @@ start:
     callq read_int
     movq %rax, %rcx
     cmpq %rcx, %rbx
-    je block.93
+    je block.80
     jmp block.94
 
 	.globl main
