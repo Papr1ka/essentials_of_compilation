@@ -18,17 +18,13 @@ block.198:
     jmp block.197
 
 	.align 16
-block.199:
-    movq $0, %rcx
-    jmp block.197
-
-	.align 16
 block.200:
     xorq $1, %rcx
     xorq $1, %rcx
     cmpq $1, %rcx
     je block.198
-    jmp block.199
+    movq $0, %rcx
+    jmp block.197
 
 	.align 16
 block.201:
@@ -36,26 +32,17 @@ block.201:
     jmp block.200
 
 	.align 16
-block.202:
+block.203:
+    cmpq $0, %rbx
+    je block.201
     movq %rdx, %rcx
     xorq $1, %rcx
     jmp block.200
 
 	.align 16
-block.203:
-    cmpq $0, %rbx
-    je block.201
-    jmp block.202
-
-	.align 16
 block.204:
     movq %rdx, %rcx
     xorq $1, %rcx
-    jmp block.203
-
-	.align 16
-block.205:
-    movq $0, %rcx
     jmp block.203
 
 	.align 16
@@ -75,7 +62,8 @@ start:
     xorq $1, %rdx
     cmpq $0, %rbx
     je block.204
-    jmp block.205
+    movq $0, %rcx
+    jmp block.203
 
 	.globl main
 	.align 16

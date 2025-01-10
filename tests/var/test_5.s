@@ -16,17 +16,13 @@ block.209:
     jmp block.208
 
 	.align 16
-block.210:
-    movq $0, %rcx
-    jmp block.208
-
-	.align 16
 start:
     callq read_int
     movq %rax, %rcx
     cmpq $1, %rcx
     je block.209
-    jmp block.210
+    movq $0, %rcx
+    jmp block.208
 
 	.globl main
 	.align 16

@@ -7,14 +7,14 @@ conclusion:
 start:
     callq read_int
     movq %rax, %rdx
-    movq $1, %rsi
-    negq %rsi
-    addq $3, %rsi
-    addq $400, %rsi
-    movq $5, %rcx
-    addq %rsi, %rcx
+    movq $1, %rcx
     negq %rcx
-    addq %rcx, %rdx
+    addq $3, %rcx
+    addq $400, %rcx
+    movq $5, %rsi
+    addq %rcx, %rsi
+    negq %rsi
+    addq %rsi, %rdx
     movq %rdx, %rdi
     callq print_int
     movq $0, %rax

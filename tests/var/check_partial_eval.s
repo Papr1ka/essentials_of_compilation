@@ -9,13 +9,14 @@ start:
     addq $4, %rcx
     movq $48, %rdx
     subq %rcx, %rdx
-    movq $6, %rcx
-    addq $7, %rcx
-    movq $5, %rsi
-    subq %rcx, %rsi
-    movq $2, %rcx
-    addq %rsi, %rcx
-    subq $4, %rcx
+    movq $6, %rsi
+    addq $7, %rsi
+    movq $5, %rcx
+    subq %rsi, %rcx
+    movq $2, %rsi
+    addq %rcx, %rsi
+    subq $4, %rsi
+    movq %rsi, %rcx
     addq %rdx, %rcx
     addq %rdx, %rcx
     movq %rcx, %rdi

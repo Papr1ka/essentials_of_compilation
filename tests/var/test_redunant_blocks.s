@@ -4,15 +4,11 @@ conclusion:
     retq 
 
 	.align 16
-block.211:
-    movq $0, %rax
-    jmp conclusion
-
-	.align 16
 start:
     movq $0, %rdi
     callq print_int
-    jmp block.211
+    movq $0, %rax
+    jmp conclusion
 
 	.globl main
 	.align 16

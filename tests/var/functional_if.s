@@ -15,18 +15,14 @@ block.58:
     jmp block.57
 
 	.align 16
-block.59:
-    callq read_int
-    movq %rax, %rcx
-    jmp block.57
-
-	.align 16
 start:
     callq read_int
     movq %rax, %rcx
     cmpq $5, %rcx
     jle block.58
-    jmp block.59
+    callq read_int
+    movq %rax, %rcx
+    jmp block.57
 
 	.globl main
 	.align 16

@@ -58,7 +58,7 @@ def dedent():
 
 def str_Module(self):
     indent()
-    body = "".join([str(s) for s in self.body])
+    body = "\n".join([str(s) for s in self.body])
     dedent()
     return body
 
@@ -802,14 +802,14 @@ class Uninitialized(expr):
 @dataclass
 class CProgram:
     __match_args__ = ("body",)
-    body: list[stmt]
+    body: dict[str, list[stmt]]
 
     def __str__(self):
         result = ""
         for l, ss in self.body.items():
             result += l + ":\n"
             indent()
-            result += "".join([str(s) for s in ss]) + "\n"
+            result += "\n".join([str(s) for s in ss]) + "\n"
             dedent()
         return result
 
@@ -1630,6 +1630,16 @@ def compile_and_test(
             passname, interp_dict, program_root, program, compiler_name
         )
 
+    passname = "remove_jumps"
+    if hasattr(compiler, passname):
+        trace("\n# " + passname + "\n")
+        program = compiler.remove_jumps(program)
+        trace(program)
+        total_passes += 1
+        successful_passes += test_pass(
+            passname, interp_dict, program_root, program, compiler_name
+        )
+
     passname = "assign_homes"
     if hasattr(compiler, passname):
         trace("\n# " + passname + "\n")
@@ -1783,6 +1793,11 @@ def compile(compiler, compiler_name, type_check_L, type_check_C, program_filenam
     trace("\n# select instructions\n")
     pseudo_x86 = compiler.select_instructions(program)
     trace_ast_and_concrete(pseudo_x86)
+
+    if hasattr(compiler, "remove_jumps"):
+        trace("\n# remove_jumps\n")
+        pseudo_x86 = compiler.remove_jumps(pseudo_x86)
+        trace_ast_and_concrete(pseudo_x86)
 
     trace("\n# assign homes\n")
     almost_x86 = compiler.assign_homes(pseudo_x86)

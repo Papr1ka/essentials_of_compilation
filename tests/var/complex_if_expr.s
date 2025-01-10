@@ -13,24 +13,18 @@ block.141:
     jmp conclusion
 
 	.align 16
-block.142:
-    addq $2, %rcx
-    jmp block.141
-
-	.align 16
 block.143:
     addq $10, %rcx
     jmp block.141
 
 	.align 16
-block.144:
-    cmpq $0, %rbx
-    je block.142
-    jmp block.143
+block.142:
+    addq $2, %rcx
+    jmp block.141
 
 	.align 16
-block.145:
-    cmpq $2, %rbx
+block.144:
+    cmpq $0, %rbx
     je block.142
     jmp block.143
 
@@ -42,7 +36,9 @@ start:
     movq %rax, %rcx
     cmpq $1, %rbx
     jl block.144
-    jmp block.145
+    cmpq $2, %rbx
+    je block.142
+    jmp block.143
 
 	.globl main
 	.align 16

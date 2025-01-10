@@ -23,27 +23,11 @@ block.153:
     jmp block.152
 
 	.align 16
-block.154:
-    subq $2, %rbx
-    jmp block.152
-
-	.align 16
 block.155:
     cmpq $2, %rbx
     je block.153
-    jmp block.154
-
-	.align 16
-block.156:
-    movq $1, %rbx
-    jmp block.151
-
-	.align 16
-block.157:
-    movq $2, %rax
-    cmpq $4, %rax
-    jl block.156
-    jmp block.156
+    subq $2, %rbx
+    jmp block.152
 
 	.align 16
 block.158:
@@ -51,7 +35,8 @@ block.158:
     movq %rax, %rcx
     cmpq $4, %rcx
     je block.155
-    jmp block.157
+    movq $1, %rbx
+    jmp block.151
 
 	.align 16
 block.159:

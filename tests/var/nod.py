@@ -1,4 +1,3 @@
-# Программа:
 a = input_int()
 b = input_int()
 if a == b:

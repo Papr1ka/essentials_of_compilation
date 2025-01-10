@@ -13,18 +13,17 @@ start:
     movq %rax, %rcx
     addq $4, %rbx
     subq $2, %rbx
-    movq %rbx, %rdx
-    addq $6, %rdx
+    addq $6, %rbx
     addq $4, %rcx
     subq $1, %rcx
     subq $2, %rcx
     subq $3, %rcx
-    subq %rcx, %rdx
+    subq %rcx, %rbx
     movq $4, %rcx
     negq %rcx
-    addq %rcx, %rdx
-    addq $1, %rdx
-    movq %rdx, %rdi
+    addq %rcx, %rbx
+    addq $1, %rbx
+    movq %rbx, %rdi
     callq print_int
     movq $0, %rax
     jmp conclusion

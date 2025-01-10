@@ -546,6 +546,12 @@ class Compiler:
             case Goto(label):
                 return [Jump(label)]
             case If(
+                Compare(_, [_], [_]),
+                [Goto(label_thn)],
+                [Goto(label_els)],
+            ) if label_thn == label_els:
+                return [Jump(label_els)]
+            case If(
                 Compare(left, [cmp], [right]),
                 [Goto(label_thn)],
                 [Goto(label_els)],
@@ -685,6 +691,47 @@ class Compiler:
                     )
                     live_before_block[block_label] = l_before
                 return mapping
+
+    ############################################################################
+    # Remove Jumps
+    ############################################################################
+
+    def remove_jumps(self, p: X86Program) -> X86Program:
+        match p:
+            case X86Program(dict() as basic_blocks):
+                cfg = self.build_cfg(p)
+                transposed_cfg = transpose(cfg)
+                ordering: list[str] = topological_sort(transposed_cfg)
+
+                new_basic_blocks = {}
+                for label in ordering:
+                    block = basic_blocks[label]
+                    if label == label_name("conclusion"):
+                        new_basic_blocks[label_name("conclusion")] = block
+                    else:
+                        (*prevs, last) = block
+                        only_one_pred = lambda label: len(set(cfg.ins[label])) == 1
+
+                        match last:
+                            case Jump(succ_block) if (
+                                succ_block != label_name("conclusion")
+                                and only_one_pred(succ_block)
+                            ):
+                                block_to_merge = new_basic_blocks[succ_block]
+                                new_block = prevs + block_to_merge
+                                new_basic_blocks[label] = new_block
+                                new_basic_blocks.pop(succ_block)
+
+                                # handling cfg
+                                for succ in cfg.out[succ_block]:
+                                    cfg.add_edge(label, succ)
+                                cfg.remove_vertex(succ_block)
+
+                                print(f"{succ_block} merged to {label}")
+                            case _:
+                                new_basic_blocks[label] = block
+                cfg.show("dot").save("output_cfg.dot")
+                return X86Program(new_basic_blocks)
 
     ############################################################################
     # Collect all variables
