@@ -21,6 +21,16 @@ def create_block(stmts, basic_blocks) -> List[stmt]:
             return [Goto(label)]
 
 
+cmd_to_cc_mapping = {
+    Eq: "e",
+    NotEq: "ne",
+    Lt: "l",
+    LtE: "le",
+    Gt: "g",
+    GtE: "ge",
+}
+
+
 class Compiler:
     def __init__(self, available: int = 11):
         self.available = available
@@ -279,7 +289,7 @@ class Compiler:
                     self.explicate_pred(test, new_body, new_orelse, basic_blocks) + cont
                 )
             case Call(Name("input_int"), []):
-                return Expr(e) + cont
+                return [Expr(e)] + cont
             case Begin(body, result):
                 new_body = self.explicate_effect(result, cont, basic_blocks)
                 for stmt in reversed(body):
@@ -388,82 +398,135 @@ class Compiler:
     # # Select Instructions
     # ############################################################################
 
-    # # The expression e passed to select_arg should furthermore be an atom.
-    # # (But there is no type for atoms, so the type of e is given as expr.)
-    # def select_arg(self, e: ast.expr) -> arg:
-    #     match e:
-    #         case ast.Name(var):
-    #             return Variable(var)
-    #         case ast.Constant(value):
-    #             return Immediate(value)
+    # The expression e passed to select_arg should furthermore be an atom.
+    # (But there is no type for atoms, so the type of e is given as expr.)
+    def select_arg(self, e: expr) -> arg:
+        match e:
+            case Name(var):
+                return Variable(var)
+            case Constant(bool() as val):
+                return Immediate(int(val))
+            case Constant(value):
+                return Immediate(value)
 
-    # def select_stmt(self, s: ast.stmt) -> List[instr]:
-    #     match s:
-    #         case ast.Expr(ast.Call(ast.Name("print"), [atm])):
-    #             arg = self.select_arg(atm)
-    #             return [
-    #                 Instr("movq", [arg, Reg("rdi")]),
-    #                 Callq("print_int", 1),
-    #             ]
-    #         case ast.Expr(ast.Call(ast.Name("input_int"), [])):
-    #             return [
-    #                 Callq("read_int", 0),
-    #                 Instr("movq", [Reg("rax"), target]),
-    #             ]
-    #         case ast.Expr():
-    #             return []
-    #         case ast.Assign([ast.Name(var)], exp):
-    #             target = Variable(var)
-    #             match exp:
-    #                 case ast.Constant(value):
-    #                     return [Instr("movq", [Immediate(value), target])]
-    #                 case ast.Name(var):
-    #                     source = Variable(var)
-    #                     return [Instr("movq", [source, target])]
-    #                 case ast.Call(ast.Name("input_int"), []):
-    #                     return [
-    #                         Callq("read_int", 0),
-    #                         Instr("movq", [Reg("rax"), target]),
-    #                     ]
-    #                 case ast.UnaryOp(ast.USub(), atm):
-    #                     arg = self.select_arg(atm)
-    #                     match arg:
-    #                         case Immediate() | Variable():
-    #                             return [
-    #                                 Instr("movq", [arg, target]),
-    #                                 Instr("negq", [target]),
-    #                             ]
+    def select_exp(self, e: expr, target: None | Variable | Reg) -> list[instr]:
+        if target is None:
+            match e:
+                case Call(Name("input_int"), []):
+                    return [Callq("read_int", 0)]
+                case _:
+                    return []
 
-    #                 case ast.BinOp(left_atm, (ast.Add() | ast.Sub()) as op, right_atm):
-    #                     arg0 = self.select_arg(left_atm)
-    #                     arg1 = self.select_arg(right_atm)
-    #                     instr_name = None
-    #                     match op:
-    #                         case ast.Add():
-    #                             instr_name = "addq"
-    #                         case ast.Sub():
-    #                             instr_name = "subq"
+        match e:
+            case Name() | Constant():
+                return [Instr("movq", [self.select_arg(e), target])]
+            case Call(Name("input_int"), []):
+                return [
+                    Callq("read_int", 0),
+                    Instr("movq", [Reg("rax"), target]),
+                ]
+            case UnaryOp(USub(), atm):
+                return [
+                    Instr("movq", [self.select_arg(atm), target]),
+                    Instr("negq", [target]),
+                ]
+            case UnaryOp(Not(), atm):
+                arg0 = self.select_arg(atm)
+                match target, arg0:
+                    case Variable(dest), Variable(source) if source == dest:
+                        return [Instr("xorq", [Immediate(1), target])]
+                    case _:
+                        return [
+                            Instr("movq", [arg0, target]),
+                            Instr("xorq", [Immediate(1), target]),
+                        ]
 
-    #                     match (arg0, arg1):
-    #                         case (Variable(var_arg), other) if var_arg == var:
-    #                             return [Instr(instr_name, [other, target])]
-    #                         case (other, Variable(var_arg)) if var_arg == var:
-    #                             return [Instr(instr_name, [other, target])]
-    #                         case _:
-    #                             return [
-    #                                 Instr("movq", [arg0, target]),
-    #                                 Instr(instr_name, [arg1, target]),
-    #                             ]
-    #         case _:
-    #             raise Exception("E")
+            case BinOp(left, (Add() | Sub()) as op, right):
+                arg0 = self.select_arg(left)
+                arg1 = self.select_arg(right)
+                instr_name = None
+                match op:
+                    case ast.Add():
+                        instr_name = "addq"
+                    case ast.Sub():
+                        instr_name = "subq"
 
-    # def select_instructions(self, p: ast.Module) -> X86Program:
-    #     match p:
-    #         case ast.Module(body):
-    #             program = []
-    #             for stmt in body:
-    #                 program = [*program, *self.select_stmt(stmt)]
-    #             return X86Program(program, 0)
+                match target:
+                    case Reg():
+                        return [
+                            Instr("movq", [arg0, target]),
+                            Instr(instr_name, [arg1, target]),
+                        ]
+                    case Variable(var):
+                        match (arg0, arg1):
+                            case (Variable(var_arg), other) if var_arg == var:
+                                return [Instr(instr_name, [other, target])]
+                            case (other, Variable(var_arg)) if var_arg == var:
+                                return [Instr(instr_name, [other, target])]
+                            case _:
+                                return [
+                                    Instr("movq", [arg0, target]),
+                                    Instr(instr_name, [arg1, target]),
+                                ]
+            case Compare(left, [cmp], [right]):
+                arg0 = self.select_arg(left)
+                arg1 = self.select_arg(right)
+                cc = cmd_to_cc_mapping[type(cmp)]
+                return [
+                    Instr("cmpq", [arg1, arg0]),
+                    Instr(f"set{cc}", [ByteReg("al")]),
+                    Instr("movzbq", [ByteReg("al"), target]),
+                ]
+            case _:
+                raise Exception(f"not supported expression: {e}")
+
+    def select_stmt(self, s: stmt) -> List[instr]:
+        match s:
+            case Expr(Call(Name("print"), [atm])):
+                arg = self.select_arg(atm)
+                return [
+                    Instr("movq", [arg, Reg("rdi")]),
+                    Callq("print_int", 1),
+                ]
+            case Expr(exp):
+                return self.select_exp(exp)
+            case Assign([Name(var)], exp):
+                target = Variable(var)
+                return self.select_exp(exp, target)
+            case _:
+                raise Exception("E")
+
+    def select_tail(self, t: stmt) -> list[instr]:
+        match t:
+            case Return(value):
+                return self.select_exp(value, Reg("rax"))
+            case Goto(label):
+                return [Jump(label)]
+            case If(
+                Compare(left, [cmp], [right]),
+                [Goto(label_thn)],
+                [Goto(label_els)],
+            ):
+                arg0 = self.select_arg(left)
+                arg1 = self.select_arg(right)
+                cc = cmd_to_cc_mapping[type(cmp)]
+                return [
+                    Instr("cmpq", [arg1, arg0]),
+                    JumpIf(cc, label_thn),
+                    Jump(label_els),
+                ]
+
+    def select_instructions(self, p: CProgram) -> X86Program:
+        match p:
+            case CProgram(basic_blocks):
+                x86_basic_blocks = {}
+                for label, (*ss, tail) in basic_blocks.items():
+                    block = []
+                    for stmt in ss:
+                        block += self.select_stmt(stmt)
+                    block += self.select_tail(tail)
+                    x86_basic_blocks[label] = block
+                return X86Program(x86_basic_blocks, 0)
 
     # ############################################################################
     # # Liveness analysys
