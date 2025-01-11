@@ -11,10 +11,10 @@ conclusion:
 	.align 16
 start:
     movq $1, %rcx
-    movq $2, %rbx
-    movq $3, %r12
-    movq $4, %r13
-    movq $5, %r14
+    movq $2, %r12
+    movq $3, %r13
+    movq $4, %r14
+    movq $5, %rbx
     movq $6, -8(%rbp)
     movq $7, -16(%rbp)
     movq $8, -24(%rbp)
@@ -28,13 +28,13 @@ start:
     movq $16, -88(%rbp)
     movq %rcx, %rdi
     callq print_int
-    movq %rbx, %rdi
-    callq print_int
     movq %r12, %rdi
     callq print_int
     movq %r13, %rdi
     callq print_int
     movq %r14, %rdi
+    callq print_int
+    movq %rbx, %rdi
     callq print_int
     movq -8(%rbp), %rdi
     callq print_int

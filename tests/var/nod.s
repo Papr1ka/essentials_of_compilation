@@ -23,6 +23,12 @@ block.58:
     jmp block.56
 
 	.align 16
+block.57:
+    movq %rbx, %rdi
+    callq print_int
+    jmp block.56
+
+	.align 16
 block.60:
     movq %rbx, %rdi
     callq print_int
@@ -60,12 +66,6 @@ block.68:
 block.69:
     subq %rcx, %rbx
     jmp block.68
-
-	.align 16
-block.57:
-    movq %rbx, %rdi
-    callq print_int
-    jmp block.56
 
 	.align 16
 start:
