@@ -7,8 +7,9 @@ conclusion:
 start:
     callq read_int
     movq %rax, %rcx
-    addq $100, %rcx
-    movq %rcx, %rdi
+    movq $100, %rdx
+    addq %rcx, %rdx
+    movq %rdx, %rdi
     callq print_int
     movq $0, %rax
     jmp conclusion

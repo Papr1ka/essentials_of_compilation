@@ -25,16 +25,6 @@ def force(promise: list[stmt] | Promise) -> list[stmt]:
     return promise
 
 
-# def create_block(stmts, basic_blocks) -> List[stmt]:
-#     match stmts:
-#         case [Goto(l)]:
-#             return stmts
-#         case _:
-#             label = label_name(generate_name("block"))
-#             basic_blocks[label] = stmts
-#             return [Goto(label)]
-
-
 def create_block(
     promise: list[stmt] | Promise, basic_blocks: dict[str, list[stmt]]
 ) -> Promise:
@@ -72,6 +62,290 @@ class Compiler:
 
     ############################################################################
     # Partial Evaluation
+    ############################################################################
+
+    def pe_exp(self, e: expr):
+        match e:
+            case Constant(int() | bool()) | Call(Name("input_int"), []) | Name():
+                # int | boll | input_int() | var
+                return e
+
+            case UnaryOp(USub() | Not() as op, expr):
+                # not e | -e
+                expr = self.pe_exp(expr)
+                match expr:
+                    case Constant(value):
+                        match op:
+                            case USub():
+                                # -int
+                                return Constant(neg64(value))
+                            case Not():
+                                # not bool
+                                return Constant(not value)
+                    case _:
+                        return UnaryOp(op, expr)
+
+            case (
+                BinOp(left, (Add() | Sub()) as op, right)
+                | BoolOp(op, [left, right])
+                | Compare(left, [op], [right])
+            ):
+                # a +/- b, a and/or b, a cmp b
+                left = self.pe_exp(left)
+                right = self.pe_exp(right)
+
+                match (left, right):
+                    case (Constant(value0), Constant(value1)):
+                        match op:
+                            # binops (a +/- b)
+                            case Add():
+                                return Constant(add64(value0, value1))
+                            case Sub():
+                                return Constant(sub64(value0, value1))
+                            # boolops (a and/or b)
+                            case And():
+                                return Constant(value0 and value1)
+                            case Or():
+                                return Constant(value0 or value1)
+                            # cmp (a cmp b)
+                            case Eq():
+                                return Constant(value0 == value1)
+                            case NotEq():
+                                return Constant(value0 != value1)
+                            case Lt():
+                                return Constant(value0 < value1)
+                            case LtE():
+                                return Constant(value0 <= value1)
+                            case Gt():
+                                return Constant(value0 > value1)
+                            case GtE():
+                                return Constant(value0 >= value1)
+                    case (
+                        BinOp(
+                            Constant(value0),
+                            (Add() | Sub()) as inner_op,
+                            right,
+                        ),
+                        Constant(value1),
+                    ):
+                        # (v0 +|- x) +|- v1
+                        match op:
+                            # binops (a +/- b)
+                            case Add():
+                                match inner_op:
+                                    case Add():
+                                        # (v0 + x) + v1 = (v0+v1) + x
+                                        return BinOp(
+                                            Constant(add64(value0, value1)),
+                                            Add(),
+                                            right,
+                                        )
+                                    case Sub():
+                                        # (v0 - x) + v1 = (v0+v1) - x
+                                        return BinOp(
+                                            Constant(add64(value0, value1)),
+                                            Sub(),
+                                            right,
+                                        )
+                            case Sub():
+                                match inner_op:
+                                    case Add():
+                                        # (v0 + x) - v1 = (v0-v1) + x
+                                        return BinOp(
+                                            Constant(sub64(value0, value1)),
+                                            Add(),
+                                            right,
+                                        )
+                                    case Sub():
+                                        # (v0 - x) - v1 = (v0 - v1) - x
+                                        return BinOp(
+                                            Constant(sub64(value0 - value1)),
+                                            Sub(),
+                                            right,
+                                        )
+                            case And() | Or():
+                                raise TypeError(
+                                    f"type error, {left} must be bool in {left} {op} {right}"
+                                )
+                            case (Eq() | NotEq() | Gt() | GtE() | Lt() | LtE()) as cmp:
+                                # ==, !=, >, >=, <, <=
+                                match inner_op:
+                                    case Add():
+                                        # (v0 + x) cmp v1 = (x) cmp (v1 - v0)
+                                        return Compare(
+                                            right,
+                                            [cmp],
+                                            [Constant(sub64(value1, value0))],
+                                        )
+                                    case Sub():
+                                        # (v0 - x) cmp v1 = (v0 - v1) cmp (x)
+                                        return Compare(
+                                            Constant(sub64(value0, value1)),
+                                            [cmp],
+                                            [right],
+                                        )
+
+                    case (
+                        Constant(value0),
+                        BinOp(Constant(value1), (Add() | Sub()) as inner_op, right),
+                    ):
+                        # v0 +/- (v1 +/- x)
+                        match op:
+                            case Add():
+                                match inner_op:
+                                    case Add():
+                                        # v0 + (v1 + x) = (v0+v1) + x
+                                        return BinOp(
+                                            Constant(add64(value0, value1)),
+                                            Add(),
+                                            right,
+                                        )
+                                    case Sub():
+                                        # v0 + (v1 - x) = (v0+v1) - x
+                                        return BinOp(
+                                            Constant(add64(value0, value1)),
+                                            Sub(),
+                                            right,
+                                        )
+                            case Sub():
+                                match inner_op:
+                                    case Add():
+                                        # v0 - (v1 + x) = (v0-v1) - x
+                                        return BinOp(
+                                            Constant(sub64(value0, value1)),
+                                            Sub(),
+                                            right,
+                                        )
+                                    case Sub():
+                                        # v0 - (v1 - x) = (v0-v1) + x
+                                        return BinOp(
+                                            Constant(sub64(value0, value1)),
+                                            Add(),
+                                            right,
+                                        )
+                            case And() | Or():
+                                raise TypeError(
+                                    f"type error, {left} must be bool in {left} {op} {right}"
+                                )
+                            case (Eq() | NotEq() | Gt() | GtE() | Lt() | LtE()) as cmp:
+                                # ==, !=, >, >=, <, <=
+                                match inner_op:
+                                    case Add():
+                                        # v0 cmp (v1 + x) = (v0-v1) cmp (x)
+                                        return Compare(
+                                            Constant(sub64(value0, value1)),
+                                            [cmp],
+                                            [right],
+                                        )
+                                    case Sub():
+                                        # v0 cmp (v1 - x) = (x) cmp (v1-v0)
+                                        return Compare(
+                                            right,
+                                            [cmp],
+                                            [Constant(sub64(value1, value0))],
+                                        )
+                    case (Constant(bool() as value0), other) | (
+                        other,
+                        Constant(bool() as value0),
+                    ):
+                        match op:
+                            case And():
+                                match value0:
+                                    case True:  # True and x | x and True
+                                        return other
+                                    case False if left.value is False:  # False and x
+                                        return Constant(False)
+                                    case False:  # x and False, side effects in x
+                                        return other
+                            case Or():
+                                match value0:
+                                    case True if left.value is True:  # True or x
+                                        return Constant(True)
+                                    case (
+                                        True
+                                    ):  # x or True, can't optimize, may be side effects in x
+                                        return BoolOp(Or(), [left, right])
+                                    case False:  # False or x | x or False
+                                        return other
+                            case Eq():
+                                match value0:
+                                    case True:  # True == x | x == True
+                                        return other
+                                    case False:  # False == x | x == False
+                                        return UnaryOp(Not(), other)
+                            case NotEq():
+                                match value0:
+                                    case True:  # True != x | x != True
+                                        return UnaryOp(Not(), other)
+                                    case False:  # False != x | x != False
+                                        return other
+                            case _:
+                                raise TypeError(
+                                    f"type error, {left} must be bool in {left} {op} {right}"
+                                )
+                    case (_, Constant(int())):
+                        match op:
+                            case Add():
+                                return BinOp(right, op, left)
+                            case _:
+                                match e:
+                                    case BinOp():
+                                        return BinOp(left, op, right)
+                                    case BoolOp():
+                                        return BoolOp(op, [left, right])
+                                    case Compare():
+                                        return Compare(left, [op], [right])
+                    case _:
+                        match e:
+                            case BinOp():
+                                return BinOp(left, op, right)
+                            case BoolOp():
+                                return BoolOp(op, [left, right])
+                            case Compare():
+                                return Compare(left, [op], [right])
+
+            case IfExp(test, body, orelse):
+                test = self.pe_exp(test)
+                match test:
+                    case Constant(bool() as cond):
+                        if cond:
+                            return self.pe_exp(body)
+                        return self.pe_exp(orelse)
+                    case _:
+                        return IfExp(test, self.pe_exp(body), self.pe_exp(orelse))
+
+            case _:
+                return e
+
+    def pe_stmt(self, s: stmt) -> list[stmt]:
+        match s:
+            case Expr(Call(Name("print"), [expr])):
+                return [Expr(Call(Name("print"), [self.pe_exp(expr)], []))]
+            case Expr(expr):
+                return [Expr(self.pe_exp(expr))]
+            case Assign([Name() as name], expr):
+                return [Assign([name], self.pe_exp(expr))]
+            case If(test, body, orelse):
+                test = self.pe_exp(test)
+                new_body = lambda: sum([self.pe_stmt(stmt) for stmt in body], [])
+                new_orelse = lambda: sum([self.pe_stmt(stmt) for stmt in orelse], [])
+                match test:
+                    case Constant(bool() as cond):
+                        if cond:
+                            return new_body()
+                        return new_orelse()
+                    case _:
+                        return [If(test, new_body(), new_orelse())]
+            case _:
+                return [s]
+
+    def partial_eval(self, p: ast.Module):
+        match p:
+            case ast.Module(body):
+                return ast.Module(sum([self.pe_stmt(stmt) for stmt in body], []))
+
+    ############################################################################
+    # Shrink
     ############################################################################
 
     def shrink_exp(self, e: expr):
@@ -121,85 +395,9 @@ class Compiler:
             case ast.Module(list() as body):
                 return ast.Module([self.shrink_stmt(stmt) for stmt in body])
 
-    # def pe_exp(self, e: ast.expr):
-    #     match e:
-    #         case ast.Constant(int()) | ast.Call(ast.Name("input_int"), []) | ast.Name():
-    #             return e
-    #         case ast.UnaryOp(ast.USub(), expr):
-    #             expr = self.pe_exp(expr)
-    #             match expr:
-    #                 case ast.Constant(value):
-    #                     return ast.Constant(neg64(value))
-    #                 case _:
-    #                     return ast.UnaryOp(ast.USub(), expr)
-
-    #         case ast.BinOp(left, (ast.Add() | ast.Sub()) as op, right):
-    #             left = self.pe_exp(left)
-    #             right = self.pe_exp(right)
-
-    #             match (left, right):
-    #                 case (ast.Constant(value0), ast.Constant(value1)):
-    #                     match op:
-    #                         case ast.Add():
-    #                             return ast.Constant(add64(value0, value1))
-    #                         case ast.Sub():
-    #                             return ast.Constant(sub64(value0, value1))
-    #                 case (
-    #                     ast.BinOp(ast.Constant(value0), ast.Add(), right),
-    #                     ast.Constant(value1),
-    #                 ):
-    #                     match op:
-    #                         case ast.Add():
-    #                             return ast.BinOp(
-    #                                 ast.Constant(value0 + value1), ast.Add(), right
-    #                             )
-    #                         case ast.Sub():
-    #                             return ast.BinOp(
-    #                                 ast.Constant(value0 - value1), ast.Add(), right
-    #                             )
-    #                 case (
-    #                     ast.Constant(value0),
-    #                     ast.BinOp(ast.Constant(value1), ast.Add(), right),
-    #                 ):
-    #                     match op:
-    #                         case ast.Add():
-    #                             return ast.BinOp(
-    #                                 ast.Constant(value0 + value1), ast.Add(), right
-    #                             )
-    #                         case ast.Sub():
-    #                             return ast.BinOp(
-    #                                 ast.Constant(value0 - value1), ast.Sub(), right
-    #                             )
-    #                 case (_, ast.Constant()):
-    #                     match op:
-    #                         case ast.Add():
-    #                             return ast.BinOp(right, op, left)
-    #                         case _:
-    #                             return ast.BinOp(left, op, right)
-    #                 case _:
-    #                     return ast.BinOp(left, op, right)
-    #         case _:
-    #             return e
-
-    # def pe_stmt(self, s: ast.stmt):
-    #     match s:
-    #         case ast.Expr(ast.Call(ast.Name("print"), [expr])):
-    #             return ast.Expr(ast.Call(ast.Name("print"), [self.pe_exp(expr)], []))
-    #         case ast.Expr(expr):
-    #             return ast.Expr(self.pe_exp(expr))
-    #         case ast.Assign([ast.Name() as name], expr):
-    #             return ast.Assign([name], self.pe_exp(expr))
-    #         case _:
-    #             return s
-
-    # def partial_eval(self, p: ast.Module):
-    #     match p:
-    #         case ast.Module(body):
-    #             return ast.Module([self.pe_stmt(stmt) for stmt in body])
-
-    # ############################################################################
-    # # Remove Complex Operands
-    # ############################################################################
+    ############################################################################
+    # Remove Complex Operands
+    ############################################################################
 
     def rco_exp(self, e: ast.expr, need_atomic: bool) -> Tuple[ast.expr, Temporaries]:
         match e:

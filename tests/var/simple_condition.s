@@ -6,15 +6,15 @@ conclusion:
     retq 
 
 	.align 16
-block.54:
+block.31:
     movq $0, %rax
     jmp conclusion
 
 	.align 16
-block.55:
+block.32:
     movq %rbx, %rdi
     callq print_int
-    jmp block.54
+    jmp block.31
 
 	.align 16
 start:
@@ -22,10 +22,10 @@ start:
     callq read_int
     movq %rax, %rcx
     cmpq %rcx, %rbx
-    je block.55
+    je block.32
     movq %rcx, %rdi
     callq print_int
-    jmp block.54
+    jmp block.31
 
 	.globl main
 	.align 16

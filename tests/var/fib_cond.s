@@ -4,57 +4,57 @@ conclusion:
     retq 
 
 	.align 16
-block.60:
+block.37:
     movq $0, %rax
     jmp conclusion
 
 	.align 16
-block.61:
-    movq %rdi, %rdx
-    addq %rsi, %rdx
+block.38:
+    movq %rcx, %rsi
+    addq %rdi, %rsi
+    movq %rdi, %rcx
     movq %rsi, %rdi
-    movq %rdx, %rsi
-    subq $1, %rcx
-    jmp block.60
+    subq $1, %rdx
+    jmp block.37
 
 	.align 16
-block.63:
-    movq %rdi, %rdx
-    addq %rsi, %rdx
+block.40:
+    movq %rcx, %rsi
+    addq %rdi, %rsi
+    movq %rdi, %rcx
     movq %rsi, %rdi
-    movq %rdx, %rsi
-    subq $1, %rcx
-    cmpq $0, %rcx
-    jg block.61
-    movq %rdx, %rdi
+    subq $1, %rdx
+    cmpq $0, %rdx
+    jg block.38
+    movq %rsi, %rdi
     callq print_int
-    jmp block.60
+    jmp block.37
 
 	.align 16
-block.65:
-    movq %rdi, %rdx
-    addq %rsi, %rdx
+block.42:
+    movq %rcx, %rsi
+    addq %rdi, %rsi
+    movq %rdi, %rcx
     movq %rsi, %rdi
-    movq %rdx, %rsi
-    subq $1, %rcx
-    cmpq $0, %rcx
-    jg block.63
-    movq %rdx, %rdi
+    subq $1, %rdx
+    cmpq $0, %rdx
+    jg block.40
+    movq %rsi, %rdi
     callq print_int
-    jmp block.60
+    jmp block.37
 
 	.align 16
 start:
     callq read_int
-    movq %rax, %rcx
-    movq $2, %rdi
-    movq $3, %rsi
-    movq %rsi, %rdx
-    cmpq $0, %rcx
-    jg block.65
-    movq %rdx, %rdi
+    movq %rax, %rdx
+    movq $2, %rcx
+    movq $3, %rdi
+    movq %rdi, %rsi
+    cmpq $0, %rdx
+    jg block.42
+    movq %rsi, %rdi
     callq print_int
-    jmp block.60
+    jmp block.37
 
 	.globl main
 	.align 16
