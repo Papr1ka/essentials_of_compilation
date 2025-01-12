@@ -1,4 +1,5 @@
 from collections import deque
+from priority_queue import PriorityQueue
 
 
 class Edge:
@@ -228,6 +229,43 @@ def topological_sort(G: DirectedAdjList) -> [Vertex]:
             in_degree[v] -= 1
             if in_degree[v] == 0:
                 queue.append(v)
+    return topo
+
+
+def topological_stable_sort(G: DirectedAdjList) -> [Vertex]:
+    # сортировка устойчива к циклам
+    # считаем кол-во входящих рёбер
+    in_degree = {u: 0 for u in G.vertices()}
+    for e in G.edges():
+        in_degree[e.target] += 1
+
+    # чтобы для вершин с одинаковыми in_degree был порядок как в обычной очереди
+    order = 0
+
+    # словарь для хранения приоритетов
+    L: dict[Vertex, tuple[int, int]] = {}
+
+    def less(x, y):
+        return L[x.key] > L[y.key]
+
+    Q = PriorityQueue(less)
+
+    # сразу добавляем все вершины
+    for u in G.vertices():
+        L[u] = (in_degree[u], order)
+        order += 1
+        Q.push(u)
+
+    topo = []
+    while not Q.empty():
+        u = Q.pop()
+        topo.append(u)
+        for v in G.adjacent(u):
+            # обновляем кол-во входящих вершин и порядок
+            in_deg, _ = L[v]
+            L[v] = (in_deg - 1, order)
+            order += 1
+            Q.increase_key(v)
     return topo
 
 

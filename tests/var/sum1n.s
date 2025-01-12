@@ -6,39 +6,26 @@ conclusion:
     retq 
 
 	.align 16
-block.50:
+block.179:
+    addq %r12, %rbx
+    subq $1, %r12
+    jmp block.178
+
+	.align 16
+block.178:
+    cmpq $0, %r12
+    jg block.179
     movq %rbx, %rdi
     callq print_int
     movq $0, %rax
     jmp conclusion
 
 	.align 16
-block.51:
-    jmp block.50
-
-	.align 16
-block.53:
-    cmpq %rcx, %rbx
-    jg block.51
-    movq %rcx, %rbx
-    jmp block.50
-
-	.align 16
-block.54:
-    movq %r12, %rbx
-    jmp block.53
-
-	.align 16
 start:
+    movq $0, %rbx
     callq read_int
     movq %rax, %r12
-    callq read_int
-    movq %rax, %rbx
-    callq read_int
-    movq %rax, %rcx
-    cmpq %rbx, %r12
-    jg block.54
-    jmp block.53
+    jmp block.178
 
 	.globl main
 	.align 16

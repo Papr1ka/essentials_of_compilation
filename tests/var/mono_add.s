@@ -5,12 +5,12 @@ conclusion:
 
 	.align 16
 start:
-    movq $1, %rcx
-    addq %rcx, %rcx
-    movq %rcx, %rdx
-    addq %rcx, %rdx
+    movq $1, %rdx
+    addq %rdx, %rdx
+    movq %rdx, %rcx
     addq %rdx, %rcx
-    movq %rcx, %rdi
+    addq %rcx, %rdx
+    movq %rdx, %rdi
     callq print_int
     movq $0, %rax
     jmp conclusion

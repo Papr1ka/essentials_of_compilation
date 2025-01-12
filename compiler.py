@@ -1,6 +1,11 @@
-import ast
 from ast import *
-from graph import UndirectedAdjList, DirectedAdjList, topological_sort, transpose
+from dataflow_analysis import analyze_dataflow
+from graph import (
+    UndirectedAdjList,
+    DirectedAdjList,
+    topological_stable_sort,
+    transpose,
+)
 from utils import *
 from x86_ast import *
 import os
@@ -336,13 +341,17 @@ class Compiler:
                         return new_orelse()
                     case _:
                         return [If(test, new_body(), new_orelse())]
+            case While(test, body, []):
+                test = self.pe_exp(test)
+                new_body = sum([self.pe_stmt(stmt) for stmt in body], [])
+                return [While(test, new_body, [])]
             case _:
                 return [s]
 
-    def partial_eval(self, p: ast.Module):
+    def partial_eval(self, p: Module):
         match p:
-            case ast.Module(body):
-                return ast.Module(sum([self.pe_stmt(stmt) for stmt in body], []))
+            case Module(body):
+                return Module(sum([self.pe_stmt(stmt) for stmt in body], []))
 
     ############################################################################
     # Shrink
@@ -350,24 +359,22 @@ class Compiler:
 
     def shrink_exp(self, e: expr):
         match e:
-            case ast.UnaryOp(ast.USub() | ast.Not() as op, exp):
-                return ast.UnaryOp(op, self.shrink_exp(exp))
-            case ast.BinOp(left, ast.Add() | ast.Sub() as op, right):
-                return ast.BinOp(self.shrink_exp(left), op, self.shrink_exp(right))
-            case ast.BoolOp(ast.And(), [left, right]):
+            case UnaryOp(USub() | Not() as op, exp):
+                return UnaryOp(op, self.shrink_exp(exp))
+            case BinOp(left, Add() | Sub() as op, right):
+                return BinOp(self.shrink_exp(left), op, self.shrink_exp(right))
+            case BoolOp(And(), [left, right]):
                 left = self.shrink_exp(left)
                 right = self.shrink_exp(right)
-                return ast.IfExp(left, right, ast.Constant(False))
-            case ast.BoolOp(ast.Or(), [left, right]):
+                return IfExp(left, right, Constant(False))
+            case BoolOp(Or(), [left, right]):
                 left = self.shrink_exp(left)
                 right = self.shrink_exp(right)
-                return ast.IfExp(left, ast.Constant(True), right)
-            case ast.Compare(left, [cmp], [right]):
-                return ast.Compare(
-                    self.shrink_exp(left), [cmp], [self.shrink_exp(right)]
-                )
-            case ast.IfExp(exp, body, orelse):
-                return ast.IfExp(
+                return IfExp(left, Constant(True), right)
+            case Compare(left, [cmp], [right]):
+                return Compare(self.shrink_exp(left), [cmp], [self.shrink_exp(right)])
+            case IfExp(exp, body, orelse):
+                return IfExp(
                     self.shrink_exp(exp), self.shrink_exp(body), self.shrink_exp(orelse)
                 )
             case _:
@@ -375,118 +382,120 @@ class Compiler:
 
     def shrink_stmt(self, s: stmt):
         match s:
-            case ast.Expr(ast.Call(ast.Name("print"), [exp])):
-                return ast.Expr(ast.Call(ast.Name("print"), [self.shrink_exp(exp)]))
-            case ast.Expr(exp):
-                return ast.Expr(self.shrink_exp(exp))
-            case ast.Assign([ast.Name() as name], exp):
-                return ast.Assign([name], self.shrink_exp(exp))
-            case ast.If(exp, body_stmts, orelse_stmts):
-                return ast.If(
+            case Expr(Call(Name("print"), [exp])):
+                return Expr(Call(Name("print"), [self.shrink_exp(exp)]))
+            case Expr(exp):
+                return Expr(self.shrink_exp(exp))
+            case Assign([Name() as name], exp):
+                return Assign([name], self.shrink_exp(exp))
+            case If(exp, body_stmts, orelse_stmts):
+                return If(
                     self.shrink_exp(exp),
                     [self.shrink_stmt(stmt) for stmt in body_stmts],
                     [self.shrink_stmt(stmt) for stmt in orelse_stmts],
                 )
+            case While(test, body, []):
+                return While(
+                    self.shrink_exp(test), [self.shrink_stmt(stmt) for stmt in body], []
+                )
             case _:
                 return s
 
-    def shrink(self, p: ast.Module):
+    def shrink(self, p: Module):
         match p:
-            case ast.Module(list() as body):
-                return ast.Module([self.shrink_stmt(stmt) for stmt in body])
+            case Module(list() as body):
+                return Module([self.shrink_stmt(stmt) for stmt in body])
 
     ############################################################################
     # Remove Complex Operands
     ############################################################################
 
-    def rco_exp(self, e: ast.expr, need_atomic: bool) -> Tuple[ast.expr, Temporaries]:
+    def rco_exp(self, e: expr, need_atomic: bool) -> Tuple[expr, Temporaries]:
         match e:
-            case ast.Constant() | ast.Name():
+            case Constant() | Name():
                 return (e, [])
 
-            case ast.UnaryOp((ast.USub() | ast.Not()) as op, expr):
+            case UnaryOp((USub() | Not()) as op, expr):
                 atm, temporaries = self.rco_exp(expr, True)
-                new_expr = ast.UnaryOp(op, atm)
+                new_expr = UnaryOp(op, atm)
                 if need_atomic:
-                    new_var = ast.Name(generate_name("tmp"))
+                    new_var = Name(generate_name("tmp"))
                     return (new_var, [*temporaries, (new_var, new_expr)])
                 return (new_expr, temporaries)
 
-            case ast.BinOp(left, (ast.Add() | ast.Sub()) as op, right):
+            case BinOp(left, (Add() | Sub()) as op, right):
                 left_atm, left_temporaries = self.rco_exp(left, True)
                 right_atm, right_temporaries = self.rco_exp(right, True)
-                new_expr = ast.BinOp(left_atm, op, right_atm)
+                new_expr = BinOp(left_atm, op, right_atm)
                 if need_atomic:
-                    new_var = ast.Name(generate_name("tmp"))
+                    new_var = Name(generate_name("tmp"))
                     return (
                         new_var,
                         [*left_temporaries, *right_temporaries, (new_var, new_expr)],
                     )
                 return (new_expr, [*left_temporaries, *right_temporaries])
 
-            case ast.Compare(left, [cmp], [right]):
+            case Compare(left, [cmp], [right]):
                 left_atm, left_temporaries = self.rco_exp(left, True)
                 right_atm, right_temporaries = self.rco_exp(right, True)
-                new_expr = ast.Compare(left_atm, [cmp], [right_atm])
+                new_expr = Compare(left_atm, [cmp], [right_atm])
                 if need_atomic:
-                    new_var = ast.Name(generate_name("tmp"))
+                    new_var = Name(generate_name("tmp"))
                     return (
                         new_var,
                         [*left_temporaries, *right_temporaries, (new_var, new_expr)],
                     )
                 return (new_expr, [*left_temporaries, *right_temporaries])
 
-            case ast.Call(ast.Name("input_int"), []):
+            case Call(Name("input_int"), []):
                 if need_atomic:
-                    new_var = ast.Name(generate_name("tmp"))
+                    new_var = Name(generate_name("tmp"))
                     return (new_var, [(new_var, e)])
                 return (e, [])
 
-            case ast.IfExp(test, body, orelse):
+            case IfExp(test, body, orelse):
                 test, test_temporaries = self.rco_exp(test, False)
                 body, body_temporaries = self.rco_exp(body, False)
                 orelse, orelse_temporaries = self.rco_exp(orelse, False)
 
-                body_assigns = [
-                    ast.Assign([name], exp) for name, exp in body_temporaries
-                ]
+                body_assigns = [Assign([name], exp) for name, exp in body_temporaries]
                 orelse_assigns = [
-                    ast.Assign([name], exp) for name, exp in orelse_temporaries
+                    Assign([name], exp) for name, exp in orelse_temporaries
                 ]
                 new_body_expr = Begin(body_assigns, body)
                 new_orelse_expr = Begin(orelse_assigns, orelse)
-                new_expr = ast.IfExp(test, new_body_expr, new_orelse_expr)
+                new_expr = IfExp(test, new_body_expr, new_orelse_expr)
 
                 if need_atomic:
-                    new_var = ast.Name(generate_name("tmp"))
+                    new_var = Name(generate_name("tmp"))
                     return (new_var, [*test_temporaries, (new_var, new_expr)])
                 return (new_expr, test_temporaries)
             case _:
                 raise Exception(type(e))
 
-    def rco_stmt(self, s: ast.stmt) -> List[ast.stmt]:
+    def rco_stmt(self, s: stmt) -> List[stmt]:
         match s:
-            case ast.Expr(ast.Call(ast.Name("print"), [expr])):
+            case Expr(Call(Name("print"), [expr])):
                 atm, temporaries = self.rco_exp(expr, True)
-                assigns = [ast.Assign([name], exp) for name, exp in temporaries]
-                new_expr = ast.Expr(ast.Call(ast.Name("print"), [atm]))
+                assigns = [Assign([name], exp) for name, exp in temporaries]
+                new_expr = Expr(Call(Name("print"), [atm]))
                 return [*assigns, new_expr]
 
-            case ast.Expr(value):
+            case Expr(value):
                 expr, temporaries = self.rco_exp(value, False)
-                assigns = [ast.Assign([name], exp) for name, exp in temporaries]
-                new_expr = ast.Expr(expr)
+                assigns = [Assign([name], exp) for name, exp in temporaries]
+                new_expr = Expr(expr)
                 return [*assigns, new_expr]
 
-            case ast.Assign([ast.Name(var)], expr):
+            case Assign([Name(var)], expr):
                 expr, temporaries = self.rco_exp(expr, False)
-                assigns = [ast.Assign([name], exp) for name, exp in temporaries]
-                new_expr = ast.Assign([ast.Name(var)], expr)
+                assigns = [Assign([name], exp) for name, exp in temporaries]
+                new_expr = Assign([Name(var)], expr)
                 return [*assigns, new_expr]
 
-            case ast.If(test, list() as body, list() as orelse):
+            case If(test, list() as body, list() as orelse):
                 expr, temporaries = self.rco_exp(test, False)
-                assigns = [ast.Assign([name], exp) for name, exp in temporaries]
+                assigns = [Assign([name], exp) for name, exp in temporaries]
 
                 new_body = []
                 for stmt in body:
@@ -494,17 +503,28 @@ class Compiler:
                 new_orelse = []
                 for stmt in orelse:
                     new_orelse = [*new_orelse, *self.rco_stmt(stmt)]
-                new_expr = ast.If(expr, new_body, new_orelse)
+                new_expr = If(expr, new_body, new_orelse)
                 return [*assigns, new_expr]
+            case While(test, body, []):
+                expr, temporaries = self.rco_exp(test, False)
+                assigns = [Assign([name], exp) for name, exp in temporaries]
+                new_test = Begin(assigns, expr)
 
-    def remove_complex_operands(self, p: ast.Module) -> ast.Module:
+                new_body = []
+                for stmt in body:
+                    new_body = [*new_body, *self.rco_stmt(stmt)]
+                return [While(new_test, new_body, [])]
+            case _:
+                raise Exception(type(s))
+
+    def remove_complex_operands(self, p: Module) -> Module:
         match p:
-            case ast.Module(body):
+            case Module(body):
                 new_body = []
                 for stmt in body:
                     stmts = self.rco_stmt(stmt)
                     new_body = [*new_body, *stmts]
-                return ast.Module(new_body)
+                return Module(new_body)
 
     ############################################################################
     # Explicate control
@@ -621,6 +641,23 @@ class Compiler:
                     new_orelse = self.explicate_stmt(stmt, new_orelse, basic_blocks)
 
                 return self.explicate_pred(test, new_body, new_orelse, basic_blocks)
+            case While(test, body, []):
+
+                def inner():
+                    label = label_name(generate_name("block"))
+
+                    goto_out_of_cycle = create_block(cont, basic_blocks)
+                    new_body = [Goto(label)]
+                    for stmt in reversed(body):
+                        new_body = self.explicate_stmt(stmt, new_body, basic_blocks)
+
+                    condition = self.explicate_pred(
+                        test, new_body, goto_out_of_cycle, basic_blocks
+                    )
+                    basic_blocks[label] = force(condition)
+                    return [Goto(label)]
+
+                return Promise(inner)
 
     def explicate_control(self, p):
         match p:
@@ -684,9 +721,9 @@ class Compiler:
                 arg1 = self.select_arg(right)
                 instr_name = None
                 match op:
-                    case ast.Add():
+                    case Add():
                         instr_name = "addq"
-                    case ast.Sub():
+                    case Sub():
                         instr_name = "subq"
 
                 match target:
@@ -853,22 +890,17 @@ class Compiler:
         self,
         block: list[stmt],
         mapping: dict[instr, set[location]],
-        live_before_block: dict[str, set[location]],
+        l_after: set[location],
     ) -> set[location]:
-        l_after = set()
+        # l_after должен быть объединением всех l_before для блоков, в которые есть переход
+        # т.е. в данной функции, при обработке jump инструкций, никакие доп сведения не берутся
         l_before = l_after
         for instr in reversed(block):
             mapping[instr] = l_after
 
-            match instr:
-                case Jump(label):
-                    l_before = live_before_block[label]
-                case JumpIf(_, label):
-                    l_before = live_before_block[label].union(l_before)
-                case _:
-                    read = self.compute_R(instr)
-                    write = self.compute_W(instr)
-                    l_before = l_after.difference(write).union(read)
+            read = self.compute_R(instr)
+            write = self.compute_W(instr)
+            l_before = l_after.difference(write).union(read)
 
             l_after = l_before
         return l_before
@@ -878,16 +910,17 @@ class Compiler:
             case X86Program(dict() as basic_blocks):
                 cfg = self.build_cfg(p)
                 transposed_cfg = transpose(cfg)
-                ordering: list[str] = topological_sort(transposed_cfg)
-                live_before_block = {}
-
                 mapping = {}
-                for block_label in ordering:
-                    block = basic_blocks[block_label]
+
+                def transfer_live(
+                    label: str, live_after: set[location]
+                ) -> set[location]:
                     l_before = self.uncover_live_block(
-                        block, mapping, live_before_block
+                        basic_blocks[label], mapping, live_after
                     )
-                    live_before_block[block_label] = l_before
+                    return l_before
+
+                analyze_dataflow(transposed_cfg, transfer_live, set(), set.union)
                 return mapping
 
     ############################################################################
@@ -899,7 +932,7 @@ class Compiler:
             case X86Program(dict() as basic_blocks):
                 cfg = self.build_cfg(p)
                 transposed_cfg = transpose(cfg)
-                ordering: list[str] = topological_sort(transposed_cfg)
+                ordering: list[str] = topological_stable_sort(transposed_cfg)
 
                 new_basic_blocks = {}
                 for label in ordering:

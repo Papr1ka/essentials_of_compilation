@@ -7,26 +7,27 @@ conclusion:
 
 	.align 16
 block.126:
-    movq %rbx, %rdi
+    movq %rcx, %rdi
     callq print_int
     movq $0, %rax
     jmp conclusion
 
 	.align 16
 block.127:
-    negq %rbx
+    negq %rcx
     jmp block.126
 
 	.align 16
 block.128:
-    movq $4, %rbx
+    movq $4, %rcx
     jmp block.127
 
 	.align 16
 block.130:
     cmpq $2, %rbx
     je block.128
-    subq $2, %rbx
+    movq %rbx, %rcx
+    subq $2, %rcx
     jmp block.127
 
 	.align 16
@@ -35,7 +36,7 @@ block.132:
     movq %rax, %rcx
     cmpq $4, %rcx
     je block.130
-    movq $1, %rbx
+    movq $1, %rcx
     jmp block.126
 
 	.align 16
