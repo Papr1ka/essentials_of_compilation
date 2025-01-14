@@ -9,7 +9,7 @@ from graph import (
 from utils import *
 from x86_ast import *
 import os
-from typing import Any, List, Tuple, Set, Dict
+from typing import Any, Set, Dict
 from priority_queue import PriorityQueue
 
 
@@ -46,8 +46,8 @@ def create_block(
     return Promise(delay)
 
 
-Binding = Tuple[Name, expr]
-Temporaries = List[Binding]
+Binding = tuple[Name, expr]
+Temporaries = list[Binding]
 LazySS = Promise | list[stmt]
 
 
@@ -407,10 +407,127 @@ class Compiler:
                 return Module([self.shrink_stmt(stmt) for stmt in body])
 
     ############################################################################
+    # Expose allocation
+    ############################################################################
+
+    def expose_allocation_exp(self, e: expr) -> expr:
+        match e:
+            case Tuple(expressions, Load()):
+                assignments = []
+                tuple_assignments = []
+                tuple_var = Name(generate_name("alloc"))
+
+                for i, init_expr in enumerate(expressions):
+                    init_expr = self.expose_allocation_exp(init_expr)
+                    new_var = Name(generate_name("init"))
+                    assignments += [Assign([new_var], init_expr)]
+                    tuple_assignments += [
+                        Assign([Subscript(tuple_var, Constant(i), Store())], new_var)
+                    ]
+
+                assert hasattr(
+                    e, "has_type"
+                ), "required field has_type for Tuple, you might forgot the required type_check before this pass"
+
+                t_type = e.has_type
+
+                match t_type:
+                    case TupleType(ts):
+                        length = len(ts)
+                    case _:
+                        raise TypeError(t_type)
+
+                bytes_required = length * 8 + 8
+
+                return Begin(
+                    [
+                        *assignments,
+                        If(
+                            Compare(
+                                BinOp(
+                                    GlobalValue("free_ptr"),
+                                    Add(),
+                                    Constant(bytes_required),
+                                ),
+                                [Lt()],
+                                [GlobalValue("fromspace_end")],
+                            ),
+                            [],
+                            [Collect(bytes_required)],
+                        ),
+                        Assign([tuple_var], Allocate(length, t_type)),
+                        *tuple_assignments,
+                    ],
+                    tuple_var,
+                )
+            case UnaryOp((USub() | Not()) as op, exp):
+                return UnaryOp(op, self.expose_allocation_exp(exp))
+            case BinOp(left, (Add() | Sub()) as op, right):
+                return BinOp(
+                    self.expose_allocation_exp(left),
+                    op,
+                    self.expose_allocation_exp(right),
+                )
+            case BoolOp(boolop, [left, right]):
+                return BoolOp(
+                    boolop,
+                    [
+                        self.expose_allocation_exp(left),
+                        self.expose_allocation_exp(right),
+                    ],
+                )
+            case Compare(left, [cmp], [right]):
+                return BoolOp(
+                    self.expose_allocation_exp(left),
+                    [cmp],
+                    [self.expose_allocation_exp(right)],
+                )
+            case IfExp(test, body, orelse):
+                return IfExp(
+                    self.expose_allocation_exp(test),
+                    self.expose_allocation_exp(body),
+                    self.expose_allocation_exp(orelse),
+                )
+            case Subscript(exp, Constant(int() as idx), Load()):
+                return Subscript(self.expose_allocation_exp(exp), Constant(idx), Load())
+            case Call(Name("len"), [exp]):
+                return Call(Name("len"), [self.expose_allocation_exp(exp)])
+            case _:
+                return e
+
+    def expose_allocation_stmt(self, s: stmt) -> stmt:
+        match s:
+            case Expr(Call(Name("print"), [exp])):
+                return Expr(Call(Name("print"), [self.expose_allocation_exp(exp)]))
+            case Expr(exp):
+                return Expr(self.expose_allocation_exp(exp))
+            case Assign([Name(var)], exp):
+                return Assign([Name(var)], self.expose_allocation_exp(exp))
+            case If(test, list() as body, list() as orelse):
+                return If(
+                    self.expose_allocation_exp(test),
+                    [self.expose_allocation_stmt(stmt) for stmt in body],
+                    [self.expose_allocation_stmt(stmt) for stmt in orelse],
+                )
+            case While(test, list() as body, []):
+                return While(
+                    self.expose_allocation_exp(test),
+                    [self.expose_allocation_stmt(stmt) for stmt in body],
+                    [],
+                )
+            case _ as unreacheble:
+                raise Exception(f"Unexpected, {unreacheble}")
+
+    def expose_allocation(self, p: Module) -> Module:
+        match p:
+            case Module(list() as body):
+                return Module([self.expose_allocation_stmt(s) for s in body])
+
+    ############################################################################
     # Remove Complex Operands
     ############################################################################
 
-    def rco_exp(self, e: expr, need_atomic: bool) -> Tuple[expr, Temporaries]:
+    def rco_exp(self, e: expr, need_atomic: bool) -> tuple[expr, Temporaries]:
         match e:
             case Constant() | Name():
                 return (e, [])
@@ -473,7 +590,7 @@ class Compiler:
             case _:
                 raise Exception(type(e))
 
-    def rco_stmt(self, s: stmt) -> List[stmt]:
+    def rco_stmt(self, s: stmt) -> list[stmt]:
         match s:
             case Expr(Call(Name("print"), [expr])):
                 atm, temporaries = self.rco_exp(expr, True)
@@ -755,7 +872,7 @@ class Compiler:
             case _:
                 raise Exception(f"not supported expression: {e}")
 
-    def select_stmt(self, s: stmt) -> List[instr]:
+    def select_stmt(self, s: stmt) -> list[instr]:
         match s:
             case Expr(Call(Name("print"), [atm])):
                 arg = self.select_arg(atm)
@@ -984,7 +1101,7 @@ class Compiler:
             case _:
                 return []
 
-    def collect_vars(self, p: X86Program) -> List[Variable]:
+    def collect_vars(self, p: X86Program) -> list[Variable]:
         match p:
             case X86Program(dict() as basic_blocks):
                 variables = set()
@@ -1064,7 +1181,7 @@ class Compiler:
             "al": -1,
         }
 
-        def lowest_available_color(alredy_used_colors: List[int]):
+        def lowest_available_color(alredy_used_colors: list[int]):
             color = 0
             while color in alredy_used_colors:
                 color += 1
@@ -1200,7 +1317,7 @@ class Compiler:
     # Patch Instructions
     ############################################################################
 
-    def patch_instr(self, i: instr) -> List[instr]:
+    def patch_instr(self, i: instr) -> list[instr]:
         match i:
             case Instr("cmpq", [arg0, arg1]):
                 match (arg0, arg1):
