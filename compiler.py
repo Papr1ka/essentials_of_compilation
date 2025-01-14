@@ -529,7 +529,7 @@ class Compiler:
 
     def rco_exp(self, e: expr, need_atomic: bool) -> tuple[expr, Temporaries]:
         match e:
-            case Constant() | Name():
+            case Constant() | Name() | GlobalValue() | Allocate():
                 return (e, [])
 
             case UnaryOp((USub() | Not()) as op, expr):
@@ -587,6 +587,36 @@ class Compiler:
                     new_var = Name(generate_name("tmp"))
                     return (new_var, [*test_temporaries, (new_var, new_expr)])
                 return (new_expr, test_temporaries)
+
+            case Begin(list() as body, result):
+                body = sum([self.rco_stmt(stmt) for stmt in body], [])
+                result, temporaries = self.rco_exp(result, False)
+                new_expr = Begin(body, result)
+                if need_atomic:
+                    new_var = Name(generate_name("tmp"))
+                    return (new_var, [*temporaries, (new_var, new_expr)])
+                return (new_expr, temporaries)
+
+            case Subscript(left, right, Load()):
+                left, left_temporaries = self.rco_exp(left, True)
+                right, right_temporaries = self.rco_exp(right, True)
+                new_expr = Subscript(left, right, Load())
+                if need_atomic:
+                    new_var = Name(generate_name("tmp"))
+                    return (
+                        new_var,
+                        [*left_temporaries, *right_temporaries, (new_var, new_expr)],
+                    )
+                return (new_expr, [*left_temporaries, *right_temporaries])
+
+            case Call(Name("len"), [exp]):
+                exp, temporaries = self.rco_exp(exp, True)
+                new_expr = Call(Name("len"), [exp])
+                if need_atomic:
+                    new_var = Name(generate_name("tmp"))
+                    return (new_var, [*temporaries, (new_var, new_expr)])
+                return (new_expr, temporaries)
+
             case _:
                 raise Exception(type(e))
 
@@ -602,6 +632,15 @@ class Compiler:
                 expr, temporaries = self.rco_exp(value, False)
                 assigns = [Assign([name], exp) for name, exp in temporaries]
                 new_expr = Expr(expr)
+                return [*assigns, new_expr]
+
+            case Assign([Subscript(left, index, Store())], right):
+                left, left_temporaries = self.rco_exp(left, True)
+                index, index_temporaries = self.rco_exp(index, True)
+                right, right_temporaries = self.rco_exp(right, True)
+                temporaries = left_temporaries + index_temporaries + right_temporaries
+                assigns = [Assign([name], exp) for name, exp in temporaries]
+                new_expr = Assign([Subscript(left, index, Store())], right)
                 return [*assigns, new_expr]
 
             case Assign([Name(var)], expr):
@@ -622,6 +661,7 @@ class Compiler:
                     new_orelse = [*new_orelse, *self.rco_stmt(stmt)]
                 new_expr = If(expr, new_body, new_orelse)
                 return [*assigns, new_expr]
+
             case While(test, body, []):
                 expr, temporaries = self.rco_exp(test, False)
                 assigns = [Assign([name], exp) for name, exp in temporaries]
@@ -631,6 +671,10 @@ class Compiler:
                 for stmt in body:
                     new_body = [*new_body, *self.rco_stmt(stmt)]
                 return [While(new_test, new_body, [])]
+
+            case Collect():
+                return [s]
+
             case _:
                 raise Exception(type(s))
 
