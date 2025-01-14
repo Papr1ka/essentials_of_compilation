@@ -712,13 +712,15 @@ class Compiler:
                 for stmt in reversed(body):
                     new_body = self.explicate_stmt(stmt, new_body, basic_blocks)
                 return new_body
+            case Allocate():
+                return Promise(lambda: [Expr(e)] + force(cont))
             case _:
                 return Promise(lambda: force(cont))
 
     def explicate_assign(
         self,
         rhs: expr,
-        lhs: Name,
+        lhs: expr,
         cont: LazySS,
         basic_blocks: dict[str, list[stmt]],
     ) -> LazySS:
@@ -785,6 +787,8 @@ class Compiler:
         self, s: stmt, cont: LazySS, basic_blocks: dict[str, list[stmt]]
     ) -> LazySS:
         match s:
+            case Assign([Subscript(_, _, Store()) as lhs], rhs):
+                return self.explicate_assign(rhs, lhs, cont, basic_blocks)
             case Assign([lhs], rhs):
                 return self.explicate_assign(rhs, lhs, cont, basic_blocks)
             case Expr(Call(Name("print"), [_])):
@@ -819,6 +823,10 @@ class Compiler:
                     return [Goto(label)]
 
                 return Promise(inner)
+            case Collect():
+                return Promise(lambda: [s] + force(cont))
+            case _ as unreacheble:
+                raise Exception(f"Unexpected {unreacheble}")
 
     def explicate_control(self, p):
         match p:
