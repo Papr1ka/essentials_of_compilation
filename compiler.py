@@ -58,6 +58,7 @@ cmd_to_cc_mapping = {
     LtE: "le",
     Gt: "g",
     GtE: "ge",
+    Is: "e",
 }
 
 
@@ -852,6 +853,8 @@ class Compiler:
                 return Immediate(int(val))
             case Constant(value):
                 return Immediate(value)
+            case GlobalValue(var):
+                return Global(var)
 
     def select_exp(self, e: expr, target: None | Variable | Reg) -> list[instr]:
         if target is None:
@@ -921,6 +924,44 @@ class Compiler:
                     Instr(f"set{cc}", [ByteReg("al")]),
                     Instr("movzbq", [ByteReg("al"), target]),
                 ]
+            case Subscript(left, Constant(int() as idx), Load()):
+                arg0 = self.select_arg(left)
+                offset = 8 * (idx + 1)
+                return [
+                    Instr("movq", [arg0, Reg("r11")]),
+                    Instr("movq", [Deref("r11", Immediate(offset)), target]),
+                ]
+            case Allocate(length, TupleType(types)):
+                offset = 8 * (length + 1)
+
+                is_ptr = lambda x: not (
+                    isinstance(x, IntType) or isinstance(x, BoolType)
+                )
+
+                def calc_tuple_tag():
+                    tag = (len(types) << 1) | 1
+                    mask = 0
+                    for ty in types:
+                        if is_ptr(ty):
+                            mask = 1 | mask
+                        mask <<= 1
+                    return tag | (mask << 7)
+
+                return [
+                    Instr("movq", [Global("free_ptr"), Reg("r11")]),
+                    Instr("addq", [Immediate(offset), Global("free_ptr")]),
+                    Instr("movq", [Immediate(calc_tuple_tag()), Deref("r11", 0)]),
+                    Instr("movq", [Reg("r11"), target]),
+                ]
+            case Call(Name("len"), [arg0]):
+                arg0 = self.select_arg(arg0)
+                length_mask = 2**7 - 2  # 0x01111110
+                return [
+                    Instr("movq", [arg0, Reg("r11")]),
+                    Instr("movq", [Deref("r11", 0), target]),
+                    Instr("andq", [Immediate(length_mask), target]),
+                    Instr("sarq", [Immediate(1), target]),
+                ]
             case _:
                 raise Exception(f"not supported expression: {e}")
 
@@ -937,6 +978,20 @@ class Compiler:
             case Assign([Name(var)], exp):
                 target = Variable(var)
                 return self.select_exp(exp, target)
+            case Collect(size):
+                return [
+                    Instr("movq", [Reg("r15"), Reg("rdi")]),
+                    Instr("movq", [Immediate(size), Reg("rsi")]),
+                    Callq("collect", 2),
+                ]
+            case Assign([Subscript(left, Constant(int() as idx), Store())], right):
+                left = self.select_arg(left)
+                right = self.select_arg(right)
+                offset = 8 * (idx + 1)
+                return [
+                    Instr("movq", [left, Reg("r11")]),
+                    Instr("movq", [right, Deref("r11", offset)]),
+                ]
             case _:
                 raise Exception("E")
 

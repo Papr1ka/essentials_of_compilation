@@ -45,11 +45,11 @@ print(v2[0][0])
     print("\n #After explicate control\n")
     print(tree)
     print()
-    exit(0)
 
     x86_program = compiler.select_instructions(tree)
     print("\n #After selecting instructions\n")
     print(x86_program)
+    exit(0)
 
     g = compiler.build_cfg(x86_program)
     g.show("dot").save("original.dot")
