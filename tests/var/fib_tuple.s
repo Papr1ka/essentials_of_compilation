@@ -9,45 +9,45 @@ conclusion:
     retq 
 
 	.align 16
-block.253:
+block.266:
     movq free_ptr(%rip), %r11
     addq $24, free_ptr(%rip)
     movq $5, 0(%r11)
     movq %r11, %rcx
     movq %rcx, %r11
-    movq %rbx, 8(%r11)
+    movq %r12, 8(%r11)
     movq %rcx, %r11
-    movq %r12, 16(%r11)
-    movq %rcx, %r12
+    movq %rbx, 16(%r11)
+    movq %rcx, %rbx
     addq $1, %r13
-    jmp block.252
+    jmp block.265
 
 	.align 16
-block.255:
-    movq %r12, %r11
-    movq 16(%r11), %rbx
-    movq %r12, %r11
+block.268:
+    movq %rbx, %r11
+    movq 16(%r11), %r12
+    movq %rbx, %r11
     movq 8(%r11), %rcx
-    movq %r12, %r11
+    movq %rbx, %r11
     movq 16(%r11), %rdx
-    movq %rcx, %r12
-    addq %rdx, %r12
+    movq %rcx, %rbx
+    addq %rdx, %rbx
     movq free_ptr(%rip), %rcx
     addq $24, %rcx
     cmpq fromspace_end(%rip), %rcx
-    jl block.253
+    jl block.266
     movq %r15, %rdi
     movq $24, %rsi
     callq collect
-    jmp block.253
+    jmp block.266
 
 	.align 16
-block.252:
+block.265:
     cmpq $8, %r13
-    jl block.255
-    movq %r12, %r11
+    jl block.268
+    movq %rbx, %r11
     movq 8(%r11), %rcx
-    movq %r12, %r11
+    movq %rbx, %r11
     movq 16(%r11), %rdx
     addq %rdx, %rcx
     movq %rcx, %rdi
@@ -56,7 +56,7 @@ block.252:
     jmp conclusion
 
 	.align 16
-block.257:
+block.270:
     movq free_ptr(%rip), %r11
     addq $24, free_ptr(%rip)
     movq $5, 0(%r11)
@@ -65,9 +65,9 @@ block.257:
     movq %rbx, 8(%r11)
     movq %rcx, %r11
     movq %r12, 16(%r11)
-    movq %rcx, %r12
+    movq %rcx, %rbx
     movq $0, %r13
-    jmp block.252
+    jmp block.265
 
 	.align 16
 start:
@@ -76,11 +76,11 @@ start:
     movq free_ptr(%rip), %rcx
     addq $24, %rcx
     cmpq fromspace_end(%rip), %rcx
-    jl block.257
+    jl block.270
     movq %r15, %rdi
     movq $24, %rsi
     callq collect
-    jmp block.257
+    jmp block.270
 
 	.globl main
 	.align 16

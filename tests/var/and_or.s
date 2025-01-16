@@ -22,9 +22,9 @@ block.85:
 
 	.align 16
 block.88:
-    cmpq $0, %r13
-    je block.85
     cmpq $0, %r12
+    je block.85
+    cmpq $0, %r13
     je block.85
     movq $11, %rdi
     callq print_int
@@ -72,14 +72,14 @@ block.96:
     jmp block.90
 
 	.align 16
-block.97:
-    movq $7, %rdi
+block.98:
+    movq $8, %rdi
     callq print_int
     jmp block.96
 
 	.align 16
-block.98:
-    movq $8, %rdi
+block.97:
+    movq $7, %rdi
     callq print_int
     jmp block.96
 
@@ -116,23 +116,23 @@ block.102:
 
 	.align 16
 block.105:
-    cmpq $0, %rbx
-    je block.102
     cmpq $0, %r14
+    je block.102
+    cmpq $0, %rbx
     je block.102
     movq $5, %rdi
     callq print_int
     jmp block.101
 
 	.align 16
-block.107:
-    movq $2, %rdi
+block.106:
+    movq $3, %rdi
     callq print_int
     jmp block.105
 
 	.align 16
-block.106:
-    movq $3, %rdi
+block.107:
+    movq $2, %rdi
     callq print_int
     jmp block.105
 
@@ -146,9 +146,9 @@ block.108:
 
 	.align 16
 block.110:
-    cmpq $0, %r14
+    cmpq $0, %rbx
     je block.106
-    cmpq $0, %r13
+    cmpq $0, %r12
     je block.108
     jmp block.107
 
@@ -166,23 +166,23 @@ block.112:
 
 	.align 16
 block.113:
-    cmpq $0, %r13
+    cmpq $0, %r12
     je block.111
     jmp block.112
 
 	.align 16
 block.114:
-    cmpq $0, %r14
+    cmpq $0, %rbx
     je block.113
     jmp block.112
 
 	.align 16
 start:
-    movq $1, %r13
-    movq $0, %r12
+    movq $1, %r12
+    movq $0, %r13
     movq $0, %rcx
-    movq $1, %r14
-    movq $0, %rbx
+    movq $1, %rbx
+    movq $0, %r14
     cmpq $0, %rcx
     je block.114
     jmp block.112

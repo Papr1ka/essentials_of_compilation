@@ -10,34 +10,34 @@ conclusion:
 	.align 16
 start:
     movq $1, %rcx
-    movq $1, %rbx
-    movq %rcx, %r12
-    addq %rbx, %r12
-    movq %r12, %rdi
+    movq $1, %r12
+    movq %rcx, %rbx
+    addq %r12, %rbx
+    movq %rbx, %rdi
     callq print_int
-    movq %rbx, %rcx
-    movq %r12, %rbx
-    movq %rcx, %r12
-    addq %rbx, %r12
-    movq %r12, %rdi
+    movq %r12, %rcx
+    movq %rbx, %r12
+    movq %rcx, %rbx
+    addq %r12, %rbx
+    movq %rbx, %rdi
     callq print_int
-    movq %rbx, %rcx
-    movq %r12, %rbx
-    movq %rcx, %r12
-    addq %rbx, %r12
-    movq %r12, %rdi
+    movq %r12, %rcx
+    movq %rbx, %r12
+    movq %rcx, %rbx
+    addq %r12, %rbx
+    movq %rbx, %rdi
     callq print_int
-    movq %rbx, %rcx
-    movq %r12, %rbx
-    movq %rcx, %r12
-    addq %rbx, %r12
-    movq %r12, %rdi
+    movq %r12, %rcx
+    movq %rbx, %r12
+    movq %rcx, %rbx
+    addq %r12, %rbx
+    movq %rbx, %rdi
     callq print_int
-    movq %rbx, %rcx
-    movq %r12, %rbx
-    movq %rcx, %r12
-    addq %rbx, %r12
-    movq %r12, %rdi
+    movq %r12, %rcx
+    movq %rbx, %r12
+    movq %rcx, %rbx
+    addq %r12, %rbx
+    movq %rbx, %rdi
     callq print_int
     movq $0, %rax
     jmp conclusion

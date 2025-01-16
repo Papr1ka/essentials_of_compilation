@@ -12,3 +12,8 @@ print(42 if (t1 is t2) and not (t1 is t3) else 0)
 v1 = (42,)
 v2 = (v1,)
 print(v2[0][0])
+print(
+    42
+    if ((len(t1) == 2 and len(t) == 3) and (len(t1) == len(t3) and len(v1) == len(v2)))
+    else 0
+)

@@ -14,14 +14,14 @@ block.116:
     jmp conclusion
 
 	.align 16
-block.117:
-    movq $2, %rdx
+block.118:
+    movq $10, %rdx
     addq %rcx, %rdx
     jmp block.116
 
 	.align 16
-block.118:
-    movq $10, %rdx
+block.117:
+    movq $2, %rdx
     addq %rcx, %rdx
     jmp block.116
 
