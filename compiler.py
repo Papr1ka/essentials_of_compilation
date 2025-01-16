@@ -63,8 +63,12 @@ cmd_to_cc_mapping = {
 
 
 class Compiler:
-    def __init__(self, available: int = 11):
+    def __init__(
+        self, available: int = 11, root_size: int = 65536, heap_size: int = 16
+    ):
         self.available = available
+        self.root_size = root_size
+        self.heap_size = heap_size
 
     ############################################################################
     # Partial Evaluation
@@ -478,7 +482,7 @@ class Compiler:
                     ],
                 )
             case Compare(left, [cmp], [right]):
-                return BoolOp(
+                return Compare(
                     self.expose_allocation_exp(left),
                     [cmp],
                     [self.expose_allocation_exp(right)],
@@ -530,7 +534,13 @@ class Compiler:
 
     def rco_exp(self, e: expr, need_atomic: bool) -> tuple[expr, Temporaries]:
         match e:
-            case Constant() | Name() | GlobalValue() | Allocate():
+            case Constant() | Name() | GlobalValue():
+                return (e, [])
+
+            case Allocate():
+                if need_atomic:
+                    new_var = Name(generate_name("tmp"))
+                    return (new_var, [(new_var, e)])
                 return (e, [])
 
             case UnaryOp((USub() | Not()) as op, expr):
@@ -773,6 +783,20 @@ class Compiler:
                 for stmt in reversed(body):
                     new_body = self.explicate_stmt(stmt, new_body, basic_blocks)
                 return new_body
+            case Subscript(left, index, Load()):
+
+                def inner():
+                    new_var = Name(generate_name("tmp"))
+                    return [
+                        Assign([new_var], cnd),
+                        If(
+                            Compare(new_var, [Eq()], [Constant(False)]),
+                            force(create_block(els, basic_blocks)),
+                            force(create_block(thn, basic_blocks)),
+                        ),
+                    ]
+
+                return Promise(inner)
             case _:
                 return Promise(
                     lambda: [
@@ -929,7 +953,7 @@ class Compiler:
                 offset = 8 * (idx + 1)
                 return [
                     Instr("movq", [arg0, Reg("r11")]),
-                    Instr("movq", [Deref("r11", Immediate(offset)), target]),
+                    Instr("movq", [Deref("r11", offset), target]),
                 ]
             case Allocate(length, TupleType(types)):
                 offset = 8 * (length + 1)
@@ -941,10 +965,10 @@ class Compiler:
                 def calc_tuple_tag():
                     tag = (len(types) << 1) | 1
                     mask = 0
-                    for ty in types:
+                    for ty in reversed(types):
+                        mask <<= 1
                         if is_ptr(ty):
                             mask = 1 | mask
-                        mask <<= 1
                     return tag | (mask << 7)
 
                 return [
@@ -1026,7 +1050,11 @@ class Compiler:
 
     def select_instructions(self, p: CProgram) -> X86Program:
         match p:
-            case CProgram(basic_blocks):
+            case CProgram(basic_blocks, var_types):
+                assert (
+                    var_types is not None
+                ), "Type check CTup required to obrain required var_types field"
+
                 x86_basic_blocks = {label_name("conclusion"): []}
                 for label, (*ss, tail) in basic_blocks.items():
                     block = []
@@ -1034,7 +1062,7 @@ class Compiler:
                         block += self.select_stmt(stmt)
                     block += self.select_tail(tail)
                     x86_basic_blocks[label] = block
-                return X86Program(x86_basic_blocks, 0)
+                return X86Program(x86_basic_blocks, 0, var_types=var_types)
 
     ############################################################################
     # Liveness analysys
@@ -1078,7 +1106,11 @@ class Compiler:
             case Instr("negq" | "pushq", [arg0]):
                 return self.compute_locations(arg0)
             case Callq(_, num_args):
-                return {0: set(), 1: set([Reg("rdi")])}[num_args]
+                return {
+                    0: set(),
+                    1: set([Reg("rdi")]),
+                    2: set([Reg("rdi"), Reg("rsi")]),
+                }[num_args]
             case _:
                 return set()
 
@@ -1181,12 +1213,9 @@ class Compiler:
                                 for succ in cfg.out[succ_block]:
                                     cfg.add_edge(label, succ)
                                 cfg.remove_vertex(succ_block)
-
-                                print(f"{succ_block} merged to {label}")
                             case _:
                                 new_basic_blocks[label] = block
-                cfg.show("dot").save("output_cfg.dot")
-                return X86Program(new_basic_blocks)
+                return X86Program(new_basic_blocks, var_types=p.var_types)
 
     ############################################################################
     # Collect all variables
@@ -1223,7 +1252,7 @@ class Compiler:
 
     def build_interference(self, p: X86Program) -> UndirectedAdjList:
         match p:
-            case X86Program(dict() as basic_blocks):
+            case X86Program(dict() as basic_blocks, _, _, _, var_types):
                 liveness = self.uncover_live(p)
                 graph = UndirectedAdjList(
                     vertex_label=lambda x: (
@@ -1240,6 +1269,27 @@ class Compiler:
                                 for v in live_after:
                                     if v != s and v != d:
                                         graph.add_edge(d, v)
+                            case Callq("collect"):
+                                for v in filter(
+                                    lambda x: (isinstance(x, Variable)), live_after
+                                ):
+                                    if isinstance(var_types[v.id], TupleType):
+                                        for reg in [
+                                            Reg("rsp"),
+                                            Reg("rbp"),
+                                            Reg("rbx"),
+                                            Reg("r12"),
+                                            Reg("r13"),
+                                            Reg("r14"),
+                                            Reg("r15"),
+                                        ]:
+                                            graph.add_edge(v, reg)
+
+                                write_to = self.compute_W(instr)
+                                for d in write_to:
+                                    for v in live_after:
+                                        if v != d:
+                                            graph.add_edge(d, v)
                             case _:
                                 write_to = self.compute_W(instr)
                                 for d in write_to:
@@ -1353,9 +1403,15 @@ class Compiler:
     # Assign Homes
     ############################################################################
 
-    def assign_homes_arg(self, a: arg, home: Dict[Variable, int]) -> arg:
+    def assign_homes_arg(
+        self,
+        a: arg,
+        home: Dict[Variable, int],
+        var_types: dict[str, Type],
+        spilled_to_root,
+    ) -> arg:
         match a:
-            case Variable():
+            case Variable(var):
                 integer_to_register = {
                     0: "rcx",
                     1: "rdx",
@@ -1373,52 +1429,79 @@ class Compiler:
                 if mapped < self.available:
                     return Reg(integer_to_register[mapped])
                 else:
-                    return Deref("rbp", -8 * (mapped - self.available + 1))
+                    num_spilled_to_root = len(spilled_to_root)
+                    if isinstance(var_types[var], TupleType):
+                        # spill to root stack
+                        if mapped in spilled_to_root:
+                            return Deref("r15", spilled_to_root[mapped])
+                        spilled_to_root[mapped] = -8 * (num_spilled_to_root + 1)
+                        return Deref("r15", spilled_to_root[mapped])
+
+                    mapped -= len([x for x in spilled_to_root if x < mapped])
+
+                    return Deref(
+                        "rbp",
+                        -8 * ((mapped) - self.available + 1),
+                    )
             case _:
                 return a
 
-    def assign_homes_instr(self, i: instr, home: Dict[Variable, int]) -> instr:
+    def assign_homes_instr(
+        self,
+        i: instr,
+        home: Dict[Variable, int],
+        var_types: dict[str, Type],
+        spilled_to_root,
+    ) -> instr:
         match i:
             case Instr(cmd, [arg0, arg1]):
-                arg0 = self.assign_homes_arg(arg0, home)
-                arg1 = self.assign_homes_arg(arg1, home)
+                arg0 = self.assign_homes_arg(arg0, home, var_types, spilled_to_root)
+                arg1 = self.assign_homes_arg(arg1, home, var_types, spilled_to_root)
                 return Instr(cmd, [arg0, arg1])
             case Instr(cmd, [arg0]):
-                arg0 = self.assign_homes_arg(arg0, home)
+                arg0 = self.assign_homes_arg(arg0, home, var_types, spilled_to_root)
                 return Instr(cmd, [arg0])
             case _:
                 return i
 
     def assign_homes(self, p: X86Program) -> X86Program:
         match p:
-            case X86Program(dict() as basic_blocks):
+            case X86Program(dict() as basic_blocks, _, _, _, var_types):
                 interference_graph = self.build_interference(p)
                 variables = self.collect_vars(p)
                 home = self.color_graph(
                     interference_graph, variables, self.build_move_graph(p)
                 )
                 new_blocks = {}
+                spilled_to_root = {}
+
                 for label, block in basic_blocks.items():
                     new_block_body = [
-                        self.assign_homes_instr(instr, home) for instr in block
+                        self.assign_homes_instr(instr, home, var_types, spilled_to_root)
+                        for instr in block
                     ]
                     new_blocks[label] = new_block_body
 
-                colors = home.values()
+                colors = set(home.values())
 
                 used_callee = [Reg("rbp")]
-                if len(colors) > 0:
-                    stack_size = max(max(colors) - self.available + 1, 0) * 8
-                    calee_saved_registers = [
-                        Reg("rbx"),
-                        Reg("r12"),
-                        Reg("r13"),
-                        Reg("r14"),
-                    ]
-                    used_callee.extend(calee_saved_registers[: max(max(colors) - 6, 0)])
-                else:
-                    stack_size = 0
-                return X86Program(new_blocks, stack_size, used_callee)
+
+                on_stacks = colors.difference(set(list(range(self.available))))
+                num_spilled_to_root = len(spilled_to_root)
+                num_on_procedure_stack = len(on_stacks) - len(spilled_to_root)
+                stack_size = num_on_procedure_stack * 8
+
+                for color, reg in [
+                    (7, Reg("rbx")),
+                    (8, Reg("r12")),
+                    (9, Reg("r13")),
+                    (10, Reg("r14")),
+                ]:
+                    if color in colors:
+                        used_callee.append(reg)
+                return X86Program(
+                    new_blocks, stack_size, used_callee, num_spilled_to_root
+                )
 
     ############################################################################
     # Patch Instructions
@@ -1485,14 +1568,16 @@ class Compiler:
 
     def patch_instructions(self, p: X86Program) -> X86Program:
         match p:
-            case X86Program(dict() as basic_blocks, stack_space, used_callee):
+            case X86Program(
+                dict() as basic_blocks, stack_space, used_callee, root_spilled
+            ):
                 new_blocks = {}
                 for label, block in basic_blocks.items():
                     new_block_body = []
                     for instr in block:
                         new_block_body += self.patch_instr(instr)
                     new_blocks[label] = new_block_body
-                return X86Program(new_blocks, stack_space, used_callee)
+                return X86Program(new_blocks, stack_space, used_callee, root_spilled)
 
     ############################################################################
     # Prelude & Conclusion
@@ -1500,7 +1585,9 @@ class Compiler:
 
     def prelude_and_conclusion(self, p: X86Program) -> X86Program:
         match p:
-            case X86Program(dict() as basic_blocks, stack_space, used_callee):
+            case X86Program(
+                dict() as basic_blocks, stack_space, used_callee, root_spilled
+            ):
 
                 align = lambda x: x + 8 if x % 16 != 0 else x
                 used_by_callee = len(used_callee) * 8 - 8
@@ -1511,22 +1598,27 @@ class Compiler:
                         for callee_saved_reg in used_callee
                     ],
                     Instr("movq", [Reg("rsp"), Reg("rbp")]),
+                    Instr("subq", [Immediate(stack_space), Reg("rsp")]),
+                    Instr("movq", [Immediate(self.root_size), Reg("rdi")]),
+                    Instr("movq", [Immediate(self.heap_size), Reg("rsi")]),
+                    Callq("initialize", 2),
+                    Instr("movq", [Global("rootstack_begin"), Reg("r15")]),
+                    *[
+                        Instr("movq", [Immediate(0), Deref("r15", i)])
+                        for i in range(root_spilled)
+                    ],
+                    Instr("addq", [Immediate(root_spilled * 8), Reg("r15")]),
                     Jump("start"),
                 ]
                 conclusion = [
+                    Instr("subq", [Immediate(root_spilled * 8), Reg("r15")]),
+                    Instr("addq", [Immediate(stack_space), Reg("rsp")]),
                     *[
                         Instr("popq", [callee_saved_reg])
                         for callee_saved_reg in reversed(used_callee)
                     ],
                     Instr("retq", []),
                 ]
-                if stack_space != 0:
-                    prelude.insert(
-                        -1, Instr("subq", [Immediate(stack_space), Reg("rsp")])
-                    )
-                    conclusion.insert(
-                        0, Instr("addq", [Immediate(stack_space), Reg("rsp")])
-                    )
 
                 basic_blocks[label_name("main")] = prelude
                 basic_blocks[label_name("conclusion")] = conclusion

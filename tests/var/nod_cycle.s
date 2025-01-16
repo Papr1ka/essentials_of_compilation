@@ -1,5 +1,7 @@
 	.align 16
 conclusion:
+    subq $0, %r15
+    addq $0, %rsp
     popq %r12
     popq %rbx
     popq %rbp
@@ -39,6 +41,12 @@ main:
     pushq %rbx
     pushq %r12
     movq %rsp, %rbp
+    subq $0, %rsp
+    movq $65536, %rdi
+    movq $16, %rsi
+    callq initialize
+    movq rootstack_begin(%rip), %r15
+    addq $0, %r15
     jmp start
 
 

@@ -801,8 +801,9 @@ class Uninitialized(expr):
 
 @dataclass
 class CProgram:
-    __match_args__ = ("body",)
+    __match_args__ = ("body", "var_types")
     body: dict[str, list[stmt]]
+    var_types: dict[str, Type] = None
 
     def __str__(self):
         result = ""

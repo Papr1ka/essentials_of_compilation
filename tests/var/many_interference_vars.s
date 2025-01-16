@@ -1,5 +1,6 @@
 	.align 16
 conclusion:
+    subq $0, %r15
     addq $96, %rsp
     popq %r14
     popq %r13
@@ -11,14 +12,14 @@ conclusion:
 	.align 16
 start:
     movq $1, %rcx
-    movq $2, %r13
-    movq $3, %r14
-    movq $4, %r12
-    movq $5, -8(%rbp)
-    movq $6, -16(%rbp)
-    movq $7, -24(%rbp)
-    movq $8, -32(%rbp)
-    movq $9, %rbx
+    movq $2, %r12
+    movq $3, %r13
+    movq $4, %r14
+    movq $5, %rbx
+    movq $6, -8(%rbp)
+    movq $7, -16(%rbp)
+    movq $8, -24(%rbp)
+    movq $9, -32(%rbp)
     movq $10, -40(%rbp)
     movq $11, -48(%rbp)
     movq $12, -56(%rbp)
@@ -28,11 +29,13 @@ start:
     movq $16, -88(%rbp)
     movq %rcx, %rdi
     callq print_int
+    movq %r12, %rdi
+    callq print_int
     movq %r13, %rdi
     callq print_int
     movq %r14, %rdi
     callq print_int
-    movq %r12, %rdi
+    movq %rbx, %rdi
     callq print_int
     movq -8(%rbp), %rdi
     callq print_int
@@ -41,8 +44,6 @@ start:
     movq -24(%rbp), %rdi
     callq print_int
     movq -32(%rbp), %rdi
-    callq print_int
-    movq %rbx, %rdi
     callq print_int
     movq -40(%rbp), %rdi
     callq print_int
@@ -71,6 +72,11 @@ main:
     pushq %r14
     movq %rsp, %rbp
     subq $96, %rsp
+    movq $65536, %rdi
+    movq $16, %rsi
+    callq initialize
+    movq rootstack_begin(%rip), %r15
+    addq $0, %r15
     jmp start
 
 

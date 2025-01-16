@@ -1,5 +1,7 @@
 import ast
 from compiler import Compiler
+from graph import topological_stable_sort, transpose
+import type_check_Ctup
 from type_check_Ltup import TypeCheckLtup
 
 
@@ -8,6 +10,16 @@ if __name__ == "__main__":
 v1 = (42,)
 v2 = (v1,)
 print(v2[0][0])
+"""
+    program = """
+fib = (0, 1)
+
+i = 0
+while i < 10:
+    fib = (fib[1], fib[0] + fib[1])
+    i = i + 1
+
+print(fib[0] + fib[1])
 """
     #     program = """
     # x = input_int()
@@ -46,19 +58,16 @@ print(v2[0][0])
     print(tree)
     print()
 
+    type_check_Ctup.TypeCheckCtup().type_check(tree)
+
     x86_program = compiler.select_instructions(tree)
     print("\n #After selecting instructions\n")
     print(x86_program)
-    exit(0)
 
     g = compiler.build_cfg(x86_program)
-    g.show("dot").save("original.dot")
-    transposed = transpose(g)
-    transposed.show("dot").save("transposed.dot")
-    ordering = topological_sort(g)
-    transposed_ordering = topological_sort(transposed)
+    g.show(engine="dot").save("cfg.dot")
+    ordering = topological_stable_sort(g)
     print(ordering)
-    print(transposed_ordering)
 
     x86_program = compiler.remove_jumps(x86_program)
     print("\n #After remove jumps\n")
@@ -69,20 +78,22 @@ print(v2[0][0])
     for label, block in x86_program.body.items():
         print(f"{label}:")
         for instr in block:
-            print(f"{instr}, {mapping[instr]}")
+            print(f"{instr}, (({", ".join(map(str, mapping[instr]))}))")
 
-    print(compiler.collect_vars(x86_program))
+    variables = compiler.collect_vars(x86_program)
+    print(variables)
     interference_graph = compiler.build_interference(x86_program)
-    # interference_graph.show().view()
+    interference_graph.show().save("interference.dot")
 
     move_graph = compiler.build_move_graph(x86_program)
-    # move_graph.show().view()
+    move_graph.show().save("move.dot")
 
     mapping = compiler.color_graph(
         interference_graph,
-        list(i for i in interference_graph.vertices() if isinstance(i, Variable)),
+        variables,
         move_graph,
     )
+    print("the Mapping:")
     print(mapping)
 
     x86_program = compiler.assign_homes(x86_program)
@@ -96,3 +107,6 @@ print(v2[0][0])
     x86_program = compiler.prelude_and_conclusion(x86_program)
     print("\n# Result\n")
     print(x86_program)
+
+    with open("cp.s", "w") as file:
+        file.write(str(x86_program))

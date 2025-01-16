@@ -4,7 +4,7 @@ import ast
 from dataclasses import dataclass
 from typing import Iterable
 
-from utils import dedent, indent, indent_stmt, label_name
+from utils import dedent, indent, indent_stmt, label_name, Type
 
 
 @dataclass
@@ -12,6 +12,8 @@ class X86Program:
     body: dict[str, list[instr]] | list[instr]
     stack_space: int = 0
     used_callee: set[Reg] = None
+    root_spilled: int = 0
+    var_types: dict[str, Type] = None
 
     def __str__(self):
         result = ""

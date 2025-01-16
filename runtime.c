@@ -4,6 +4,9 @@
 #include <assert.h>
 #include "runtime.h"
 
+
+#define NDEBUG
+
 // To do: we need to account for the "any" type. -Jeremy
 
 // Often misunderstood: static global variables in C are not
@@ -178,7 +181,7 @@ void validate_vector(int64_t** scan_addr) {
 
 void collect(int64_t** rootstack_ptr, uint64_t bytes_requested)
 {
-#if 0
+#ifndef NDEBUG
   printf("collecting, need %" PRIu64 "\n", bytes_requested);
   print_heap(rootstack_ptr);
 #endif
@@ -232,7 +235,7 @@ void collect(int64_t** rootstack_ptr, uint64_t bytes_requested)
     unsigned long old_bytes = old_len * sizeof(int64_t);
     unsigned long new_bytes = old_bytes;
 
-#if 0
+#ifndef NDEBUG
     // this version is good for debugging purposes -Jeremy
     new_bytes = needed_bytes;
 #else
@@ -282,8 +285,8 @@ void collect(int64_t** rootstack_ptr, uint64_t bytes_requested)
     }
   }
   // All pointers in fromspace point to fromspace
-  /*printf("validating pointers in fromspace [%p, %p)\n",
-    fromspace_begin, fromspace_end);*/
+  printf("validating pointers in fromspace [%p, %p)\n",
+    fromspace_begin, fromspace_end);
   int64_t* scan_ptr = fromspace_begin;
   while (scan_ptr != free_ptr){
     validate_vector(&scan_ptr);
@@ -307,7 +310,7 @@ void collect(int64_t** rootstack_ptr, uint64_t bytes_requested)
   }
 #endif
 
-#if 0
+#ifndef NDEBUG
   printf("finished collecting\n");
   print_heap(rootstack_ptr);
   printf("---------------------------------------\n");
@@ -400,7 +403,9 @@ void process_vector(int64_t** scan_addr) {
 
 void cheney(int64_t** rootstack_ptr)
 {
-  // printf("cheney: starting copy, rootstack=%p\n", rootstack_ptr);
+#ifndef NDEBUG
+  printf("cheney: starting copy, rootstack=%p\n", rootstack_ptr);
+#endif
   int64_t* scan_ptr = tospace_begin;
   free_ptr = tospace_begin;
 
@@ -472,7 +477,9 @@ void cheney(int64_t** rootstack_ptr)
   tospace_end = fromspace_end;
   fromspace_begin = tmp_begin;
   fromspace_end = tmp_end;
-  //printf("cheney: finished copy\n");
+#ifndef NDEBUG
+  printf("cheney: finished copy\n");
+#endif
 }
 
 
@@ -535,7 +542,7 @@ void copy_vector(int64_t** vector_ptr_loc)
   if (! is_ptr(old_vector_ptr))
     return;
   old_vector_ptr = to_ptr(old_vector_ptr);
-#if 0
+#ifndef NDEBUG
   printf("copy_vector %p\n", old_vector_ptr);
 #endif
 
@@ -545,7 +552,7 @@ void copy_vector(int64_t** vector_ptr_loc)
   //  would have left a forwarding pointer.
 
   if (is_forwarding(tag)) {
-#if 0
+#ifndef NDEBUG
     printf("\talready copied to %p\n", (int64_t*) tag);
 #endif
     // Since we left a forwarding pointer, we have already
@@ -555,7 +562,7 @@ void copy_vector(int64_t** vector_ptr_loc)
     *vector_ptr_loc = (int64_t*) (tag | old_tag);
 
   } else {
-#if 0
+#ifndef NDEBUG
     printf("\tfirst time copy\n");
 #endif
     // This is the first time we have followed this pointer.
@@ -565,14 +572,14 @@ void copy_vector(int64_t** vector_ptr_loc)
 
     // The new vector is going to be where the free_ptr currently points.
     int64_t* new_vector_ptr = free_ptr;
-#if 0
+#ifndef NDEBUG
       printf("\tto address: %p\n", new_vector_ptr);
 #endif
       
     // The tag we grabbed earlier contains some usefull info for
     // forwarding copying the vector.
     int length = get_vec_length(tag);
-#if 0
+#ifndef NDEBUG
     printf("\tlen: %d\n", length);
 #endif
     // Copy the old vector to the new one.
