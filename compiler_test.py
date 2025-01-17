@@ -1,8 +1,9 @@
 import ast
 from compiler import Compiler
 from graph import topological_stable_sort, transpose
-import type_check_Ctup
-from type_check_Ltup import TypeCheckLtup
+import interp_Larray
+from type_check_Carray import TypeCheckCarray
+from type_check_Larray import TypeCheckLarray
 
 
 if __name__ == "__main__":
@@ -12,15 +13,16 @@ v2 = (v1,)
 print(v2[0][0])
 """
     program = """
-fib = (0, 1)
-
+A = [2, 2]
+B = [3, 3]
 i = 0
-while i < 10:
-    fib = (fib[1], fib[0] + fib[1])
+prod = 0
+while i != len(A):
+    prod = prod + A[i] * B[i]
     i = i + 1
-
-print(fib[0] + fib[1])
+print(prod)
 """
+
     #     program = """
     # x = input_int()
     # y = input_int()
@@ -32,6 +34,9 @@ print(fib[0] + fib[1])
     print(program)
     # print(ast.dump(tree, indent=2))
 
+    interp_Larray.InterpLarray().interp(tree)
+    print()
+
     compiler = Compiler()
 
     tree = compiler.shrink(tree)
@@ -39,7 +44,21 @@ print(fib[0] + fib[1])
     # print(tree)
     # print()
 
-    TypeCheckLtup().type_check(tree)
+    TypeCheckLarray().type_check(tree)
+
+    tree = compiler.resolve(tree)
+    print("\n #After resolve\n")
+    print(tree)
+    print()
+
+    TypeCheckLarray().type_check(tree)
+
+    tree = compiler.check_bounds(tree)
+    print("\n #After check bounds\n")
+    print(tree)
+    print()
+
+    TypeCheckLarray().type_check(tree)
 
     tree = compiler.expose_allocation(tree)
     print("\n #After expose allocation\n")
@@ -52,13 +71,14 @@ print(fib[0] + fib[1])
     print()
     print(repr(tree))
     print()
+    exit(0)
 
     tree = compiler.explicate_control(tree)
     print("\n #After explicate control\n")
     print(tree)
     print()
 
-    type_check_Ctup.TypeCheckCtup().type_check(tree)
+    TypeCheckCarray().type_check(tree)
 
     x86_program = compiler.select_instructions(tree)
     print("\n #After selecting instructions\n")

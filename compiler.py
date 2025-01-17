@@ -366,7 +366,7 @@ class Compiler:
         match e:
             case UnaryOp(USub() | Not() as op, exp):
                 return UnaryOp(op, self.shrink_exp(exp))
-            case BinOp(left, Add() | Sub() as op, right):
+            case BinOp(left, Add() | Sub() | Mult() as op, right):
                 return BinOp(self.shrink_exp(left), op, self.shrink_exp(right))
             case BoolOp(And(), [left, right]):
                 left = self.shrink_exp(left)
@@ -376,12 +376,22 @@ class Compiler:
                 left = self.shrink_exp(left)
                 right = self.shrink_exp(right)
                 return IfExp(left, Constant(True), right)
+            case BoolOp(op, [left, right]):
+                return BoolOp(op, [self.shrink_exp(left), self.shrink_exp(right)])
             case Compare(left, [cmp], [right]):
                 return Compare(self.shrink_exp(left), [cmp], [self.shrink_exp(right)])
             case IfExp(exp, body, orelse):
                 return IfExp(
                     self.shrink_exp(exp), self.shrink_exp(body), self.shrink_exp(orelse)
                 )
+            case Tuple(elts, Load()):
+                return Tuple([self.shrink_exp(e) for e in elts], Load())
+            case Subscript(lhs, index, Load()):
+                return Subscript(self.shrink_exp(lhs), self.shrink_exp(index), Load())
+            case List(elts, Load()):
+                return List([self.shrink_exp(e) for e in elts], Load())
+            case Call(Name("len"), [exp]):
+                return Call(Name("len"), [self.shrink_exp(exp)])
             case _:
                 return e
 
@@ -403,6 +413,17 @@ class Compiler:
                 return While(
                     self.shrink_exp(test), [self.shrink_stmt(stmt) for stmt in body], []
                 )
+            case Assign([Subscript(lhs, index, Store())], rhs):
+                return Assign(
+                    [
+                        Subscript(
+                            self.shrink_exp(lhs),
+                            self.shrink_exp(index),
+                            Store(),
+                        )
+                    ],
+                    self.shrink_exp(rhs),
+                )
             case _:
                 return s
 
@@ -410,6 +431,247 @@ class Compiler:
         match p:
             case Module(list() as body):
                 return Module([self.shrink_stmt(stmt) for stmt in body])
+
+    ############################################################################
+    # Resolve
+    ############################################################################
+
+    def resolve_exp(self, e: expr):
+        match e:
+            case UnaryOp(USub() | Not() as op, exp):
+                return UnaryOp(op, self.resolve_exp(exp))
+            case BinOp(left, Add() | Sub() | Mult() as op, right):
+                return BinOp(self.resolve_exp(left), op, self.resolve_exp(right))
+            case BoolOp(And(), [left, right]):
+                left = self.resolve_exp(left)
+                right = self.resolve_exp(right)
+                return IfExp(left, right, Constant(False))
+            case BoolOp(Or(), [left, right]):
+                left = self.resolve_exp(left)
+                right = self.resolve_exp(right)
+                return IfExp(left, Constant(True), right)
+            case BoolOp(op, [left, right]):
+                return BoolOp(op, [self.resolve_exp(left), self.resolve_exp(right)])
+            case Compare(left, [cmp], [right]):
+                return Compare(self.resolve_exp(left), [cmp], [self.resolve_exp(right)])
+            case IfExp(exp, body, orelse):
+                return IfExp(
+                    self.resolve_exp(exp),
+                    self.resolve_exp(body),
+                    self.resolve_exp(orelse),
+                )
+            case Tuple(elts, Load()):
+                return Tuple([self.resolve_exp(e) for e in elts], Load())
+            case Subscript(lhs, index, Load()):
+                assert hasattr(
+                    lhs, "has_type"
+                ), "typechek required to obtain has_type field"
+                match lhs.has_type:
+                    case ListType(el_ty):
+                        return Call(
+                            Name("array_load"),
+                            [self.resolve_exp(lhs), self.resolve_exp(index)],
+                        )
+                    case _:
+                        return Subscript(
+                            self.resolve_exp(lhs), self.resolve_exp(index), Load()
+                        )
+            case List(elts, Load()):
+                return List([self.resolve_exp(e) for e in elts], Load())
+            case Call(Name("len"), [exp]):
+                assert hasattr(
+                    exp, "has_type"
+                ), "typechek required to obtain has_type field"
+                match exp.has_type:
+                    case ListType(el_ty):
+                        return Call(Name("array_len"), [self.resolve_exp(exp)])
+                    case _:
+                        return Call(Name("len"), [self.resolve_exp(exp)])
+            case _:
+                return e
+
+    def resolve_stmt(self, s: stmt):
+        match s:
+            case Expr(Call(Name("print"), [exp])):
+                return Expr(Call(Name("print"), [self.resolve_exp(exp)]))
+            case Expr(exp):
+                return Expr(self.resolve_exp(exp))
+            case Assign([Name() as name], exp):
+                return Assign([name], self.resolve_exp(exp))
+            case If(exp, body_stmts, orelse_stmts):
+                return If(
+                    self.resolve_exp(exp),
+                    [self.resolve_stmt(stmt) for stmt in body_stmts],
+                    [self.resolve_stmt(stmt) for stmt in orelse_stmts],
+                )
+            case While(test, body, []):
+                return While(
+                    self.resolve_exp(test),
+                    [self.resolve_stmt(stmt) for stmt in body],
+                    [],
+                )
+            case Assign([Subscript(lhs, index, Store())], rhs):
+                assert hasattr(
+                    lhs, "has_type"
+                ), "typechek required to obtain has_type field"
+
+                match lhs.has_type:
+                    case ListType(el_ty):
+                        return Expr(
+                            Call(
+                                Name("array_store"),
+                                [
+                                    self.resolve_exp(lhs),
+                                    self.resolve_exp(index),
+                                    self.resolve_exp(rhs),
+                                ],
+                            )
+                        )
+                    case _:
+                        return Assign(
+                            [
+                                Subscript(
+                                    self.resolve_exp(lhs),
+                                    self.resolve_exp(index),
+                                    Store(),
+                                )
+                            ],
+                            self.resolve_exp(rhs),
+                        )
+            case _:
+                return s
+
+    def resolve(self, p: Module):
+        match p:
+            case Module(list() as body):
+                return Module([self.resolve_stmt(stmt) for stmt in body])
+
+    ############################################################################
+    # Check bounds
+    ############################################################################
+
+    def check_bounds_exp(self, e: expr):
+        match e:
+            case UnaryOp(USub() | Not() as op, exp):
+                return UnaryOp(op, self.check_bounds_exp(exp))
+            case BinOp(left, Add() | Sub() | Mult() as op, right):
+                return BinOp(
+                    self.check_bounds_exp(left), op, self.check_bounds_exp(right)
+                )
+            case BoolOp(And(), [left, right]):
+                left = self.check_bounds_exp(left)
+                right = self.check_bounds_exp(right)
+                return IfExp(left, right, Constant(False))
+            case BoolOp(Or(), [left, right]):
+                left = self.check_bounds_exp(left)
+                right = self.check_bounds_exp(right)
+                return IfExp(left, Constant(True), right)
+            case BoolOp(op, [left, right]):
+                return BoolOp(
+                    op, [self.check_bounds_exp(left), self.check_bounds_exp(right)]
+                )
+            case Compare(left, [cmp], [right]):
+                return Compare(
+                    self.check_bounds_exp(left), [cmp], [self.check_bounds_exp(right)]
+                )
+            case IfExp(exp, body, orelse):
+                return IfExp(
+                    self.check_bounds_exp(exp),
+                    self.check_bounds_exp(body),
+                    self.check_bounds_exp(orelse),
+                )
+            case Tuple(elts, Load()):
+                return Tuple([self.check_bounds_exp(e) for e in elts], Load())
+            case Subscript(lhs, Constant(int()) as index, Load()):
+                #  tuple
+                lhs = self.check_bounds_exp(lhs)
+                return IfExp(
+                    IfExp(
+                        Compare(index, [GtE()], [Constant(0)]),
+                        Compare(index, [Lt()], [Call(Name("len"), [lhs])]),
+                        Constant(False),
+                    ),
+                    Subscript(lhs, index, Load()),
+                    Call(Name("exit"), []),
+                )
+            case Call(Name("array_load"), [lhs, index]):
+                # array
+                lhs = self.check_bounds_exp(lhs)
+                index = self.check_bounds_exp(index)
+                return IfExp(
+                    IfExp(
+                        Compare(index, [GtE()], [Constant(0)]),
+                        Compare(index, [Lt()], [Call(Name("array_len"), [lhs])]),
+                        Constant(False),
+                    ),
+                    Call(Name("array_load"), [lhs, index]),
+                    Call(Name("exit"), []),
+                )
+            case List(elts, Load()):
+                return List([self.check_bounds_exp(e) for e in elts], Load())
+            case Call(Name("len"), [exp]):
+                #  tuple
+                return Call(Name("len"), [self.check_bounds_exp(exp)])
+            case Call(Name("array_len"), [arr]):
+                #  array
+                return Call(Name("array_len"), [self.check_bounds_exp(arr)])
+            case _:
+                return e
+
+    def check_bounds_stmt(self, s: stmt):
+        match s:
+            case Expr(Call(Name("print"), [exp])):
+                return Expr(Call(Name("print"), [self.check_bounds_exp(exp)]))
+            case Assign([Name() as name], exp):
+                return Assign([name], self.check_bounds_exp(exp))
+            case If(exp, body_stmts, orelse_stmts):
+                return If(
+                    self.check_bounds_exp(exp),
+                    [self.check_bounds_stmt(stmt) for stmt in body_stmts],
+                    [self.check_bounds_stmt(stmt) for stmt in orelse_stmts],
+                )
+            case While(test, body, []):
+                return While(
+                    self.check_bounds_exp(test),
+                    [self.check_bounds_stmt(stmt) for stmt in body],
+                    [],
+                )
+            case Assign([Subscript(lhs, Constant(int()) as index, Store())], rhs):
+                #  tuple
+                lhs = self.check_bounds_exp(lhs)
+                rhs = self.check_bounds_exp(rhs)
+                return If(
+                    IfExp(
+                        Compare(index, [GtE()], [Constant(0)]),
+                        Compare(index, [Lt()], [Call(Name("len"), [lhs])]),
+                        Constant(False),
+                    ),
+                    [Assign([Subscript(lhs, index, Store())], rhs)],
+                    [Expr(Call(Name("exit"), []))],
+                )
+            case Expr(Call(Name("array_store"), [lhs, index, rhs])):
+                #  array
+                lhs = self.check_bounds_exp(lhs)
+                index = self.check_bounds_exp(index)
+                rhs = self.check_bounds_exp(rhs)
+                return If(
+                    IfExp(
+                        Compare(index, [GtE()], [Constant(0)]),
+                        Compare(index, [Lt()], [Call(Name("array_len"), [lhs])]),
+                        Constant(False),
+                    ),
+                    [Assign([Subscript(lhs, index, Store())], rhs)],
+                    [Expr(Call(Name("exit"), []))],
+                )
+            case Expr(exp):
+                return Expr(self.check_bounds_exp(exp))
+            case _:
+                return s
+
+    def check_bounds(self, p: Module):
+        match p:
+            case Module(list() as body):
+                return Module([self.check_bounds_stmt(stmt) for stmt in body])
 
     ############################################################################
     # Expose allocation
@@ -435,13 +697,11 @@ class Compiler:
                 ), "required field has_type for Tuple, you might forgot the required type_check before this pass"
 
                 t_type = e.has_type
+                assert isinstance(
+                    t_type, TupleType
+                ), f"Type error in list creation {t_type} != TupleType"
 
-                match t_type:
-                    case TupleType(ts):
-                        length = len(ts)
-                    case _:
-                        raise TypeError(t_type)
-
+                length = len(expressions)
                 bytes_required = length * 8 + 8
 
                 return Begin(
@@ -465,9 +725,56 @@ class Compiler:
                     ],
                     tuple_var,
                 )
+
+            case List(elts, Load()):
+                assignments = []
+                array_assignments = []
+                array_var = Name(generate_name("alloc"))
+
+                for i, init_expr in enumerate(elts):
+                    init_expr = self.expose_allocation_exp(init_expr)
+                    new_var = Name(generate_name("init"))
+                    assignments += [Assign([new_var], init_expr)]
+                    array_assignments += [
+                        Assign([Subscript(array_var, Constant(i), Store())], new_var)
+                    ]
+
+                assert hasattr(
+                    e, "has_type"
+                ), "required field has_type for Tuple, you might forgot the required type_check before this pass"
+
+                t_type = e.has_type
+                assert isinstance(
+                    t_type, ListType
+                ), f"Type error in list creation {t_type} != ListType"
+
+                length = len(elts)
+                bytes_required = length * 8 + 8
+
+                return Begin(
+                    [
+                        *assignments,
+                        If(
+                            Compare(
+                                BinOp(
+                                    GlobalValue("free_ptr"),
+                                    Add(),
+                                    Constant(bytes_required),
+                                ),
+                                [Lt()],
+                                [GlobalValue("fromspace_end")],
+                            ),
+                            [],
+                            [Collect(bytes_required)],
+                        ),
+                        Assign([array_var], AllocateArray(length, t_type)),
+                        *array_assignments,
+                    ],
+                    array_var,
+                )
             case UnaryOp((USub() | Not()) as op, exp):
                 return UnaryOp(op, self.expose_allocation_exp(exp))
-            case BinOp(left, (Add() | Sub()) as op, right):
+            case BinOp(left, (Add() | Sub() | Mult()) as op, right):
                 return BinOp(
                     self.expose_allocation_exp(left),
                     op,
@@ -495,8 +802,18 @@ class Compiler:
                 )
             case Subscript(exp, Constant(int() as idx), Load()):
                 return Subscript(self.expose_allocation_exp(exp), Constant(idx), Load())
+            case Call(Name("array_load"), [lhs, index]):
+                return Call(
+                    Name("array_load"),
+                    [
+                        self.expose_allocation_exp(lhs),
+                        self.expose_allocation_exp(index),
+                    ],
+                )
             case Call(Name("len"), [exp]):
                 return Call(Name("len"), [self.expose_allocation_exp(exp)])
+            case Call(Name("array_len"), [exp]):
+                return Call(Name("array_len"), [self.expose_allocation_exp(exp)])
             case _:
                 return e
 
@@ -504,10 +821,24 @@ class Compiler:
         match s:
             case Expr(Call(Name("print"), [exp])):
                 return Expr(Call(Name("print"), [self.expose_allocation_exp(exp)]))
-            case Expr(exp):
-                return Expr(self.expose_allocation_exp(exp))
+            case Expr(Call(Name("array_store"), [lhs, index, rhs])):
+                return Expr(
+                    Call(
+                        Name("array_store"),
+                        [
+                            self.expose_allocation_exp(lhs),
+                            self.expose_allocation_exp(index),
+                            self.expose_allocation_exp(rhs),
+                        ],
+                    )
+                )
             case Assign([Name(var)], exp):
                 return Assign([Name(var)], self.expose_allocation_exp(exp))
+            case Assign([Subscript(lhs, Constant(int()) as index, Store())], rhs):
+                return Assign(
+                    [Subscript(self.expose_allocation_exp(lhs), index, Store())],
+                    self.expose_allocation_exp(rhs),
+                )
             case If(test, list() as body, list() as orelse):
                 return If(
                     self.expose_allocation_exp(test),
@@ -520,6 +851,8 @@ class Compiler:
                     [self.expose_allocation_stmt(stmt) for stmt in body],
                     [],
                 )
+            case Expr(exp):
+                return Expr(self.expose_allocation_exp(exp))
             case _ as unreacheble:
                 raise Exception(f"Unexpected, {unreacheble}")
 
@@ -534,7 +867,13 @@ class Compiler:
 
     def rco_exp(self, e: expr, need_atomic: bool) -> tuple[expr, Temporaries]:
         match e:
-            case Constant() | Name() | GlobalValue():
+            case Constant() | Name() | GlobalValue() | Call(Name("exit"), []):
+                return (e, [])
+
+            case AllocateArray():
+                if need_atomic:
+                    new_var = Name(generate_name("tmp"))
+                    return (new_var, [(new_var, e)])
                 return (e, [])
 
             case Allocate():
@@ -551,7 +890,7 @@ class Compiler:
                     return (new_var, [*temporaries, (new_var, new_expr)])
                 return (new_expr, temporaries)
 
-            case BinOp(left, (Add() | Sub()) as op, right):
+            case BinOp(left, (Add() | Sub() | Mult()) as op, right):
                 left_atm, left_temporaries = self.rco_exp(left, True)
                 right_atm, right_temporaries = self.rco_exp(right, True)
                 new_expr = BinOp(left_atm, op, right_atm)
@@ -628,6 +967,25 @@ class Compiler:
                     return (new_var, [*temporaries, (new_var, new_expr)])
                 return (new_expr, temporaries)
 
+            case Call(Name("array_len"), [exp]):
+                exp, temporaries = self.rco_exp(exp, True)
+                new_expr = Call(Name("array_len"), [exp])
+                if need_atomic:
+                    new_var = Name(generate_name("tmp"))
+                    return (new_var, [*temporaries, (new_var, new_expr)])
+                return (new_expr, temporaries)
+
+            case Call(Name("array_load"), [lhs, index]):
+                lhs, lhs_temporaries = self.rco_exp(lhs, True)
+                index, index_temporaries = self.rco_exp(index, True)
+                new_expr = Call(Name("array_load"), [lhs, index])
+                if need_atomic:
+                    new_var = Name(generate_name("tmp"))
+                    return (
+                        new_var,
+                        [*lhs_temporaries, *index_temporaries, (new_var, new_expr)],
+                    )
+                return (new_expr, [*lhs_temporaries, *index_temporaries])
             case _:
                 raise Exception(type(e))
 
@@ -639,13 +997,22 @@ class Compiler:
                 new_expr = Expr(Call(Name("print"), [atm]))
                 return [*assigns, new_expr]
 
+            case Expr(Call(Name("array_store"), [lhs, index, rhs])):
+                lhs, lhs_temporaries = self.rco_exp(lhs, True)
+                index, index_temporaries = self.rco_exp(index, True)
+                rhs, rhs_temporaries = self.rco_exp(rhs, True)
+                temporaries = lhs_temporaries + index_temporaries + rhs_temporaries
+                assigns = [Assign([name], exp) for name, exp in temporaries]
+                new_expr = Expr(Call(Name("array_store"), [lhs, index, rhs]))
+                return [*assigns, new_expr]
+
             case Expr(value):
                 expr, temporaries = self.rco_exp(value, False)
                 assigns = [Assign([name], exp) for name, exp in temporaries]
                 new_expr = Expr(expr)
                 return [*assigns, new_expr]
 
-            case Assign([Subscript(left, index, Store())], right):
+            case Assign([Subscript(left, Constant(int()) as index, Store())], right):
                 left, left_temporaries = self.rco_exp(left, True)
                 index, index_temporaries = self.rco_exp(index, True)
                 right, right_temporaries = self.rco_exp(right, True)
