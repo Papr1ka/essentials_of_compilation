@@ -61,6 +61,8 @@ cmd_to_cc_mapping = {
     Is: "e",
 }
 
+is_ptr = lambda x: not (isinstance(x, IntType) or isinstance(x, BoolType))
+
 
 class Compiler:
     def __init__(
@@ -96,7 +98,7 @@ class Compiler:
                         return UnaryOp(op, expr)
 
             case (
-                BinOp(left, (Add() | Sub()) as op, right)
+                BinOp(left, (Add() | Sub() | Mult()) as op, right)
                 | BoolOp(op, [left, right])
                 | Compare(left, [op], [right])
             ):
@@ -107,11 +109,13 @@ class Compiler:
                 match (left, right):
                     case (Constant(value0), Constant(value1)):
                         match op:
-                            # binops (a +/- b)
+                            # binops (a +/-/* b)
                             case Add():
                                 return Constant(add64(value0, value1))
                             case Sub():
                                 return Constant(sub64(value0, value1))
+                            case Mult():
+                                return Constant(mul64(value0, value1))
                             # boolops (a and/or b)
                             case And():
                                 return Constant(value0 and value1)
@@ -333,8 +337,8 @@ class Compiler:
                 return [Expr(Call(Name("print"), [self.pe_exp(expr)], []))]
             case Expr(expr):
                 return [Expr(self.pe_exp(expr))]
-            case Assign([Name() as name], expr):
-                return [Assign([name], self.pe_exp(expr))]
+            case Assign([lhs], rhs):
+                return [Assign([self.pe_exp(lhs)], self.pe_exp(rhs))]
             case If(test, body, orelse):
                 test = self.pe_exp(test)
                 new_body = lambda: sum([self.pe_stmt(stmt) for stmt in body], [])
@@ -583,19 +587,11 @@ class Compiler:
             case Tuple(elts, Load()):
                 return Tuple([self.check_bounds_exp(e) for e in elts], Load())
             case Subscript(lhs, Constant(int()) as index, Load()):
-                #  tuple
+                #  tuple, index checked in typecheck pass
                 lhs = self.check_bounds_exp(lhs)
-                return IfExp(
-                    IfExp(
-                        Compare(index, [GtE()], [Constant(0)]),
-                        Compare(index, [Lt()], [Call(Name("len"), [lhs])]),
-                        Constant(False),
-                    ),
-                    Subscript(lhs, index, Load()),
-                    Call(Name("exit"), []),
-                )
+                return Subscript(lhs, index, Load())
             case Call(Name("array_load"), [lhs, index]):
-                # array
+                #  array, runtime index check
                 lhs = self.check_bounds_exp(lhs)
                 index = self.check_bounds_exp(index)
                 return IfExp(
@@ -637,20 +633,12 @@ class Compiler:
                     [],
                 )
             case Assign([Subscript(lhs, Constant(int()) as index, Store())], rhs):
-                #  tuple
+                #  tuple, index checked in typecheck pass
                 lhs = self.check_bounds_exp(lhs)
                 rhs = self.check_bounds_exp(rhs)
-                return If(
-                    IfExp(
-                        Compare(index, [GtE()], [Constant(0)]),
-                        Compare(index, [Lt()], [Call(Name("len"), [lhs])]),
-                        Constant(False),
-                    ),
-                    [Assign([Subscript(lhs, index, Store())], rhs)],
-                    [Expr(Call(Name("exit"), []))],
-                )
+                return Assign([Subscript(lhs, index, Store())], rhs)
             case Expr(Call(Name("array_store"), [lhs, index, rhs])):
-                #  array
+                #  array, runtime index check
                 lhs = self.check_bounds_exp(lhs)
                 index = self.check_bounds_exp(index)
                 rhs = self.check_bounds_exp(rhs)
@@ -660,7 +648,7 @@ class Compiler:
                         Compare(index, [Lt()], [Call(Name("array_len"), [lhs])]),
                         Constant(False),
                     ),
-                    [Assign([Subscript(lhs, index, Store())], rhs)],
+                    [Expr(Call(Name("array_store"), [lhs, index, rhs]))],
                     [Expr(Call(Name("exit"), []))],
                 )
             case Expr(exp):
@@ -1006,12 +994,6 @@ class Compiler:
                 new_expr = Expr(Call(Name("array_store"), [lhs, index, rhs]))
                 return [*assigns, new_expr]
 
-            case Expr(value):
-                expr, temporaries = self.rco_exp(value, False)
-                assigns = [Assign([name], exp) for name, exp in temporaries]
-                new_expr = Expr(expr)
-                return [*assigns, new_expr]
-
             case Assign([Subscript(left, Constant(int()) as index, Store())], right):
                 left, left_temporaries = self.rco_exp(left, True)
                 index, index_temporaries = self.rco_exp(index, True)
@@ -1053,6 +1035,12 @@ class Compiler:
             case Collect():
                 return [s]
 
+            case Expr(value):
+                expr, temporaries = self.rco_exp(value, False)
+                assigns = [Assign([name], exp) for name, exp in temporaries]
+                new_expr = Expr(expr)
+                return [*assigns, new_expr]
+
             case _:
                 raise Exception(type(s))
 
@@ -1092,6 +1080,8 @@ class Compiler:
                 return new_body
             case Allocate():
                 return Promise(lambda: [Expr(e)] + force(cont))
+            case AllocateArray():
+                return Promise(lambda: [Expr(e) + force(cont)])
             case _:
                 return Promise(lambda: force(cont))
 
@@ -1164,6 +1154,20 @@ class Compiler:
                     ]
 
                 return Promise(inner)
+            case Call(Name("array_load"), [lhs, index]):
+
+                def inner():
+                    new_var = Name(generate_name("tmp"))
+                    return [
+                        Assign([new_var], cnd),
+                        If(
+                            Compare(new_var, [Eq()], [Constant(False)]),
+                            force(create_block(els, basic_blocks)),
+                            force(create_block(thn, basic_blocks)),
+                        ),
+                    ]
+
+                return Promise(inner)
             case _:
                 return Promise(
                     lambda: [
@@ -1179,14 +1183,10 @@ class Compiler:
         self, s: stmt, cont: LazySS, basic_blocks: dict[str, list[stmt]]
     ) -> LazySS:
         match s:
-            case Assign([Subscript(_, _, Store()) as lhs], rhs):
-                return self.explicate_assign(rhs, lhs, cont, basic_blocks)
             case Assign([lhs], rhs):
                 return self.explicate_assign(rhs, lhs, cont, basic_blocks)
             case Expr(Call(Name("print"), [_])):
                 return Promise(lambda: [s] + force(cont))
-            case Expr(value):
-                return self.explicate_effect(value, cont, basic_blocks)
             case If(test, body, orelse):
                 next_block = create_block(cont, basic_blocks)
                 new_body = next_block
@@ -1217,6 +1217,10 @@ class Compiler:
                 return Promise(inner)
             case Collect():
                 return Promise(lambda: [s] + force(cont))
+            case Expr(Call(Name("array_store"), [lhs, index, rhs])):
+                return Promise(lambda: [s] + force(cont))
+            case Expr(value):
+                return self.explicate_effect(value, cont, basic_blocks)
             case _ as unreacheble:
                 raise Exception(f"Unexpected {unreacheble}")
 
@@ -1279,7 +1283,7 @@ class Compiler:
                             Instr("xorq", [Immediate(1), target]),
                         ]
 
-            case BinOp(left, (Add() | Sub()) as op, right):
+            case BinOp(left, (Add() | Sub() | Mult()) as op, right):
                 arg0 = self.select_arg(left)
                 arg1 = self.select_arg(right)
                 instr_name = None
@@ -1288,6 +1292,8 @@ class Compiler:
                         instr_name = "addq"
                     case Sub():
                         instr_name = "subq"
+                    case Mult():
+                        instr_name = "imulq"
 
                 match target:
                     case Reg():
@@ -1316,21 +1322,31 @@ class Compiler:
                     Instr("movzbq", [ByteReg("al"), target]),
                 ]
             case Subscript(left, Constant(int() as idx), Load()):
+                # tuple
                 arg0 = self.select_arg(left)
                 offset = 8 * (idx + 1)
                 return [
                     Instr("movq", [arg0, Reg("r11")]),
                     Instr("movq", [Deref("r11", offset), target]),
                 ]
+            case Call(Name("array_load"), [lhs, index]):
+                # array
+                arg0 = self.select_arg(lhs)
+                arg1 = self.select_arg(index)
+                temp_var = Variable(generate_name("tmp"))
+                return [
+                    Instr("movq", [arg0, Reg("r11")]),
+                    Instr("movq", [arg1, temp_var]),
+                    Instr("imulq", [Immediate(8), temp_var]),
+                    Instr("addq", [temp_var, Reg("r11")]),
+                    Instr("movq", [Deref("r11", 8), target]),
+                ]
+
             case Allocate(length, TupleType(types)):
                 offset = 8 * (length + 1)
 
-                is_ptr = lambda x: not (
-                    isinstance(x, IntType) or isinstance(x, BoolType)
-                )
-
                 def calc_tuple_tag():
-                    tag = (len(types) << 1) | 1
+                    tag = (length << 1) | 1
                     mask = 0
                     for ty in reversed(types):
                         mask <<= 1
@@ -1344,6 +1360,22 @@ class Compiler:
                     Instr("movq", [Immediate(calc_tuple_tag()), Deref("r11", 0)]),
                     Instr("movq", [Reg("r11"), target]),
                 ]
+            case AllocateArray(length, ListType(el_ty)):
+                offset = 8 * (length + 1)
+
+                def calc_array_tag():
+                    tag = (length << 2) | 1
+                    if is_ptr(el_ty):
+                        tag = tag | 2
+                    return tag | (1 << 62)
+
+                return [
+                    Instr("movq", [Global("free_ptr"), Reg("r11")]),
+                    Instr("addq", [Immediate(offset), Global("free_ptr")]),
+                    Instr("movq", [Immediate(calc_array_tag()), Deref("r11", 0)]),
+                    Instr("movq", [Reg("r11"), target]),
+                ]
+
             case Call(Name("len"), [arg0]):
                 arg0 = self.select_arg(arg0)
                 length_mask = 2**7 - 2  # 0x01111110
@@ -1352,6 +1384,22 @@ class Compiler:
                     Instr("movq", [Deref("r11", 0), target]),
                     Instr("andq", [Immediate(length_mask), target]),
                     Instr("sarq", [Immediate(1), target]),
+                ]
+            case Call(Name("array_len"), [arg0]):
+                arg0 = self.select_arg(arg0)
+                length_mask = 2**62 - 4  # 0x00111...11100
+                temp_var = Variable(generate_name("arr_l_mask"))
+                return [
+                    Instr("movq", [arg0, Reg("r11")]),
+                    Instr("movq", [Deref("r11", 0), target]),
+                    Instr("movq", [Immediate(length_mask), temp_var]),
+                    Instr("andq", [temp_var, target]),
+                    Instr("sarq", [Immediate(2), target]),
+                ]
+            case Call(Name("exit"), []):
+                return [
+                    Instr("movq", [Immediate(255), Reg("rdi")]),
+                    Callq("exit", 1),
                 ]
             case _:
                 raise Exception(f"not supported expression: {e}")
@@ -1364,8 +1412,6 @@ class Compiler:
                     Instr("movq", [arg, Reg("rdi")]),
                     Callq("print_int", 1),
                 ]
-            case Expr(exp):
-                return self.select_exp(exp)
             case Assign([Name(var)], exp):
                 target = Variable(var)
                 return self.select_exp(exp, target)
@@ -1383,6 +1429,20 @@ class Compiler:
                     Instr("movq", [left, Reg("r11")]),
                     Instr("movq", [right, Deref("r11", offset)]),
                 ]
+            case Expr(Call(Name("array_store"), [lhs, index, rhs])):
+                arg0 = self.select_arg(lhs)
+                arg1 = self.select_arg(index)
+                arg2 = self.select_arg(rhs)
+                temp_var = Variable(generate_name("tmp"))
+                return [
+                    Instr("movq", [arg0, Reg("r11")]),
+                    Instr("movq", [arg1, temp_var]),
+                    Instr("imulq", [Immediate(8), temp_var]),
+                    Instr("addq", [temp_var, Reg("r11")]),
+                    Instr("movq", [arg2, Deref("r11", 8)]),
+                ]
+            case Expr(exp):
+                return self.select_exp(exp)
             case _:
                 raise Exception("E")
 
@@ -1640,7 +1700,9 @@ class Compiler:
                                 for v in filter(
                                     lambda x: (isinstance(x, Variable)), live_after
                                 ):
-                                    if isinstance(var_types[v.id], TupleType):
+                                    if isinstance(
+                                        var_types[v.id], TupleType
+                                    ) or isinstance(var_types[v.id], ListType):
                                         for reg in [
                                             Reg("rsp"),
                                             Reg("rbp"),
@@ -1775,7 +1837,8 @@ class Compiler:
         a: arg,
         home: Dict[Variable, int],
         var_types: dict[str, Type],
-        spilled_to_root,
+        spilled_to_root: dict[int, int],
+        spilled_to_procedure_stack: dict[int, int],
     ) -> arg:
         match a:
             case Variable(var):
@@ -1796,20 +1859,24 @@ class Compiler:
                 if mapped < self.available:
                     return Reg(integer_to_register[mapped])
                 else:
-                    num_spilled_to_root = len(spilled_to_root)
-                    if isinstance(var_types[var], TupleType):
+                    # stack
+                    # Тут большая проблема, i с какого-то перепуга присвоился и в -8(%rbp) и в -16, из-за этого получился бесконечный цикл
+                    if isinstance(var_types[var], TupleType) or isinstance(
+                        var_types[var], ListType
+                    ):
                         # spill to root stack
                         if mapped in spilled_to_root:
                             return Deref("r15", spilled_to_root[mapped])
-                        spilled_to_root[mapped] = -8 * (num_spilled_to_root + 1)
+                        spilled_to_root[mapped] = -8 * (len(spilled_to_root) + 1)
                         return Deref("r15", spilled_to_root[mapped])
 
-                    mapped -= len([x for x in spilled_to_root if x < mapped])
-
-                    return Deref(
-                        "rbp",
-                        -8 * ((mapped) - self.available + 1),
-                    )
+                    if mapped in spilled_to_procedure_stack:
+                        return Deref("rbp", spilled_to_procedure_stack[mapped])
+                    else:
+                        spilled_to_procedure_stack[mapped] = -8 * (
+                            len(spilled_to_procedure_stack) + 1
+                        )
+                        return Deref("rbp", spilled_to_procedure_stack[mapped])
             case _:
                 return a
 
@@ -1818,15 +1885,22 @@ class Compiler:
         i: instr,
         home: Dict[Variable, int],
         var_types: dict[str, Type],
-        spilled_to_root,
+        spilled_to_root: dict[int, int],
+        spilled_to_procedure_stack: dict[int, int],
     ) -> instr:
         match i:
             case Instr(cmd, [arg0, arg1]):
-                arg0 = self.assign_homes_arg(arg0, home, var_types, spilled_to_root)
-                arg1 = self.assign_homes_arg(arg1, home, var_types, spilled_to_root)
+                arg0 = self.assign_homes_arg(
+                    arg0, home, var_types, spilled_to_root, spilled_to_procedure_stack
+                )
+                arg1 = self.assign_homes_arg(
+                    arg1, home, var_types, spilled_to_root, spilled_to_procedure_stack
+                )
                 return Instr(cmd, [arg0, arg1])
             case Instr(cmd, [arg0]):
-                arg0 = self.assign_homes_arg(arg0, home, var_types, spilled_to_root)
+                arg0 = self.assign_homes_arg(
+                    arg0, home, var_types, spilled_to_root, spilled_to_procedure_stack
+                )
                 return Instr(cmd, [arg0])
             case _:
                 return i
@@ -1841,10 +1915,17 @@ class Compiler:
                 )
                 new_blocks = {}
                 spilled_to_root = {}
+                spilled_to_procedure_stack = {}
 
                 for label, block in basic_blocks.items():
                     new_block_body = [
-                        self.assign_homes_instr(instr, home, var_types, spilled_to_root)
+                        self.assign_homes_instr(
+                            instr,
+                            home,
+                            var_types,
+                            spilled_to_root,
+                            spilled_to_procedure_stack,
+                        )
                         for instr in block
                     ]
                     new_blocks[label] = new_block_body
@@ -1853,10 +1934,8 @@ class Compiler:
 
                 used_callee = [Reg("rbp")]
 
-                on_stacks = colors.difference(set(list(range(self.available))))
                 num_spilled_to_root = len(spilled_to_root)
-                num_on_procedure_stack = len(on_stacks) - len(spilled_to_root)
-                stack_size = num_on_procedure_stack * 8
+                stack_size = len(spilled_to_procedure_stack) * 8
 
                 for color, reg in [
                     (7, Reg("rbx")),
@@ -1971,7 +2050,7 @@ class Compiler:
                     Callq("initialize", 2),
                     Instr("movq", [Global("rootstack_begin"), Reg("r15")]),
                     *[
-                        Instr("movq", [Immediate(0), Deref("r15", i)])
+                        Instr("movq", [Immediate(0), Deref("r15", i * 8)])
                         for i in range(root_spilled)
                     ],
                     Instr("addq", [Immediate(root_spilled * 8), Reg("r15")]),

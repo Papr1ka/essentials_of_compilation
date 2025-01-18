@@ -7,11 +7,11 @@ conclusion:
 
 	.align 16
 start:
-    movq $1, %rcx
+    movq $1, %rsi
     movq $42, %rdx
-    movq $7, %rsi
-    addq %rcx, %rsi
-    movq %rsi, %rcx
+    movq $7, %rcx
+    addq %rsi, %rcx
+    movq %rcx, %rsi
     addq %rdx, %rsi
     negq %rcx
     addq %rcx, %rsi

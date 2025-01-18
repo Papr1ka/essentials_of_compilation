@@ -11,59 +11,59 @@ block.186:
     jmp conclusion
 
 	.align 16
-block.190:
-    movq %rcx, %rdi
-    callq print_int
-    jmp block.186
-
-	.align 16
 block.187:
     movq $1, %rdi
     callq print_int
     jmp block.186
 
 	.align 16
+block.190:
+    movq %rdx, %rdi
+    callq print_int
+    jmp block.186
+
+	.align 16
 block.189:
-    movq %rsi, %rcx
-    subq %rdi, %rcx
-    movq %rdi, %rsi
-    movq %rcx, %rdi
-    addq $1, %rdx
+    movq %rdi, %rdx
+    subq %rsi, %rdx
+    movq %rsi, %rdi
+    movq %rdx, %rsi
+    addq $1, %rcx
     jmp block.188
 
 	.align 16
 block.188:
-    cmpq $0, %rdx
+    cmpq $0, %rcx
     jl block.189
     jmp block.190
 
 	.align 16
 block.192:
-    movq %rdi, %rcx
-    addq %rsi, %rcx
-    movq %rsi, %rdi
-    movq %rcx, %rsi
-    subq $1, %rdx
+    movq %rsi, %rdx
+    addq %rdi, %rdx
+    movq %rdi, %rsi
+    movq %rdx, %rdi
+    subq $1, %rcx
     jmp block.191
 
 	.align 16
 block.191:
-    cmpq $0, %rdx
+    cmpq $0, %rcx
     jg block.192
     jmp block.190
 
 	.align 16
 start:
     callq read_int
-    movq %rax, %rdx
-    movq $0, %rdi
-    movq $1, %rsi
-    movq $0, %rcx
-    cmpq $1, %rdx
+    movq %rax, %rcx
+    movq $0, %rsi
+    movq $1, %rdi
+    movq $0, %rdx
+    cmpq $1, %rcx
     je block.187
-    cmpq $0, %rdx
+    cmpq $0, %rcx
     jl block.188
-    subq $1, %rdx
+    subq $1, %rcx
     jmp block.191
 
 	.globl main

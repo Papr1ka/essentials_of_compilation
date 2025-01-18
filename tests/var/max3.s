@@ -9,7 +9,7 @@ conclusion:
 
 	.align 16
 block.50:
-    movq %r12, %rdi
+    movq %rbx, %rdi
     callq print_int
     movq $0, %rax
     jmp conclusion
@@ -20,25 +20,25 @@ block.51:
 
 	.align 16
 block.53:
-    cmpq %rcx, %r12
+    cmpq %rcx, %rbx
     jg block.51
-    movq %rcx, %r12
+    movq %rcx, %rbx
     jmp block.50
 
 	.align 16
 block.54:
-    movq %rbx, %r12
+    movq %r12, %rbx
     jmp block.53
 
 	.align 16
 start:
     callq read_int
-    movq %rax, %rbx
-    callq read_int
     movq %rax, %r12
     callq read_int
+    movq %rax, %rbx
+    callq read_int
     movq %rax, %rcx
-    cmpq %r12, %rbx
+    cmpq %rbx, %r12
     jg block.54
     jmp block.53
 

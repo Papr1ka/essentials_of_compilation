@@ -8,19 +8,8 @@ from type_check_Larray import TypeCheckLarray
 
 if __name__ == "__main__":
     program = """
-v1 = (42,)
-v2 = (v1,)
-print(v2[0][0])
-"""
-    program = """
-A = [2, 2]
-B = [3, 3]
-i = 0
-prod = 0
-while i != len(A):
-    prod = prod + A[i] * B[i]
-    i = i + 1
-print(prod)
+arr = [(2, 3, [5, 6]), (4, 5)]
+print(arr[0][1])
 """
 
     #     program = """
@@ -34,7 +23,7 @@ print(prod)
     print(program)
     # print(ast.dump(tree, indent=2))
 
-    interp_Larray.InterpLarray().interp(tree)
+    # interp_Larray.InterpLarray().interp(tree)
     print()
 
     compiler = Compiler()
@@ -71,7 +60,6 @@ print(prod)
     print()
     print(repr(tree))
     print()
-    exit(0)
 
     tree = compiler.explicate_control(tree)
     print("\n #After explicate control\n")
@@ -101,7 +89,6 @@ print(prod)
             print(f"{instr}, (({", ".join(map(str, mapping[instr]))}))")
 
     variables = compiler.collect_vars(x86_program)
-    print(variables)
     interference_graph = compiler.build_interference(x86_program)
     interference_graph.show().save("interference.dot")
 

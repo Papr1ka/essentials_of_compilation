@@ -12,12 +12,6 @@ block.56:
     jmp conclusion
 
 	.align 16
-block.59:
-    movq %rbx, %rdi
-    callq print_int
-    jmp block.56
-
-	.align 16
 block.58:
     movq %rbx, %rdi
     callq print_int
@@ -31,6 +25,12 @@ block.60:
 
 	.align 16
 block.57:
+    movq %rbx, %rdi
+    callq print_int
+    jmp block.56
+
+	.align 16
+block.59:
     movq %rbx, %rdi
     callq print_int
     jmp block.56
