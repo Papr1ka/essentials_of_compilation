@@ -3,20 +3,68 @@ from compiler import Compiler
 from graph import topological_stable_sort, transpose
 import interp_Larray
 from type_check_Carray import TypeCheckCarray
+from type_check_Cfun import TypeCheckCfun
 from type_check_Larray import TypeCheckLarray
-
+from type_check_Lfun import TypeCheckLfun
 
 if __name__ == "__main__":
     program = """
-arr = [(2, 3, [5, 6]), (4, 5)]
-print(arr[0][1])
-"""
+def map(f : Callable[[int], int], v : tuple[int,int]) -> tuple[int,int]:
+    return f(v[0]), f(v[1])
 
-    #     program = """
-    # x = input_int()
-    # y = input_int()
-    # print(x + y)
-    # """
+def inc(x : int) -> int:
+    return x + 1
+
+print(map(inc, (0, 41))[1])
+"""
+    
+    program = """
+def map(f : Callable[[int], int], v : tuple[int,int]) -> tuple[int,int]:
+    return f(v[0]), f(v[1])
+
+def inc(x : int) -> int:
+    return x + 1
+
+def test(f: Callable[[], Callable[[int], int]]) -> Callable[[int], int]:
+    return inc
+
+f = test()
+print(map(f, (0, 41))[1])
+"""
+#     program = """
+# def map(f : Callable[[int], int], v : tuple[int,int]) -> tuple[int,int]:
+#     return inc(v[0]), inc(v[1])
+
+# def inc(x : int) -> int:
+#     return x + 1
+
+# print(map(inc, (0, 41))[1])
+# """
+
+#     program = """
+# def sum10(a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, i: int, j: int) -> int:
+#     return a + b + c + d + e + f + g + h + i + j
+
+# def sum7(a: int, b: int, c: int, d: int, e: int, f: int, g: int) -> int:
+#     return a + b + c + d + e + f + g
+
+# def sum6(a: int, b: int, c: int, d: int, e: int, f: int) -> int:
+#     return a + b + c + d + e + f
+
+# def sum5(a: int, b: int, c: int, d: int, e: int) -> int:
+#     return a + b + c + d + e
+
+# print(sum5(1, 2, 3, 4, 5))
+# print(sum6(1, 2, 3, 4, 5, 6))
+# print(sum7(1, 2, 3, 4, 5, 6, 7))
+# print(sum10(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
+# """
+#     program = """
+# def test(x: int) -> int:
+#     return 2 if x > 0 else 3
+
+# print(test(-4))
+# """
     tree = ast.parse(program)
 
     print("\n #Source AST of the program\n")
@@ -28,26 +76,41 @@ print(arr[0][1])
 
     compiler = Compiler()
 
-    tree = compiler.shrink(tree)
-    # print("\n #After shrink\n")
-    # print(tree)
-    # print()
+    TypeCheckLfun().type_check(tree)
 
-    TypeCheckLarray().type_check(tree)
+    tree = compiler.shrink(tree)
+    print("\n #After shrink\n")
+    print(tree)
+    print()
+
+
+    tree = compiler.reveal_functions(tree)
+    print("\n #After reveal functions\n")
+    print(tree)
+    print()
+
+    TypeCheckLfun().type_check(tree)
 
     tree = compiler.resolve(tree)
     print("\n #After resolve\n")
     print(tree)
     print()
 
-    TypeCheckLarray().type_check(tree)
+    TypeCheckLfun().type_check(tree)
 
     tree = compiler.check_bounds(tree)
     print("\n #After check bounds\n")
     print(tree)
     print()
 
-    TypeCheckLarray().type_check(tree)
+
+    tree = compiler.limit_functions(tree)
+    print("\n #After limit functions\n")
+    print(tree)
+    print()
+
+
+    TypeCheckLfun().type_check(tree)
 
     tree = compiler.expose_allocation(tree)
     print("\n #After expose allocation\n")
@@ -66,7 +129,8 @@ print(arr[0][1])
     print(tree)
     print()
 
-    TypeCheckCarray().type_check(tree)
+    TypeCheckCfun().type_check(tree)
+    exit(0)
 
     x86_program = compiler.select_instructions(tree)
     print("\n #After selecting instructions\n")

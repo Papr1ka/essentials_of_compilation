@@ -327,7 +327,8 @@ class Compiler:
                         return self.pe_exp(orelse)
                     case _:
                         return IfExp(test, self.pe_exp(body), self.pe_exp(orelse))
-
+            case Call(exp, exps):
+                return Call(self.pe_exp(exp), [self.pe_exp(e) for e in exps])
             case _:
                 return e
 
@@ -354,6 +355,18 @@ class Compiler:
                 test = self.pe_exp(test)
                 new_body = sum([self.pe_stmt(stmt) for stmt in body], [])
                 return [While(test, new_body, [])]
+            case Return(expr):
+                return [Return(self.pe_exp(expr))]
+            case FunctionDef(name, args, f_body, decorator_list, returns, type_comment, type_params):
+                return [
+                    FunctionDef(name,
+                                args,
+                                [self.pe_stmt(stmt) for stmt in f_body],
+                                decorator_list,
+                                returns,
+                                type_comment,
+                                type_params)
+                ]
             case _:
                 return [s]
 
@@ -396,6 +409,8 @@ class Compiler:
                 return List([self.shrink_exp(e) for e in elts], Load())
             case Call(Name("len"), [exp]):
                 return Call(Name("len"), [self.shrink_exp(exp)])
+            case Call(exp, exps):
+                return Call(self.shrink_exp(exp), [self.shrink_exp(e) for e in exps])
             case _:
                 return e
 
@@ -428,13 +443,115 @@ class Compiler:
                     ],
                     self.shrink_exp(rhs),
                 )
+            case Return(exp):
+                return Return(self.shrink_exp(exp))
             case _:
                 return s
 
     def shrink(self, p: Module):
         match p:
             case Module(list() as body):
-                return Module([self.shrink_stmt(stmt) for stmt in body])
+                defs = []
+                for i in range(len(body)):
+                    match body[i]:
+                        case FunctionDef(name, args, f_body, _, returns):
+                            defs.append(FunctionDef(name, args, [self.shrink_stmt(s) for s in f_body], None, returns, None))
+                        case _:
+                            main_body = body[i:] + [Return(Constant(0))]
+                            main_function = FunctionDef('main', [], [self.shrink_stmt(s) for s in main_body], None, IntType(), None)
+                            return Module(defs + [main_function])
+                # if program consists only of function defs and main is empty
+                main_function = FunctionDef('main', [], [Return(Constant(0))], None, IntType(), None)
+                return Module(defs + [main_function])
+                
+    ############################################################################
+    # Reveal functions
+    ############################################################################
+
+    def reveal_functions_exp(self, e: expr, functions: dict[str, int]):
+        match e:
+            case Name(var):
+                if var in functions:
+                    return FunRef(var, functions[var])
+                return e
+            case UnaryOp(USub() | Not() as op, exp):
+                return UnaryOp(op, self.reveal_functions_exp(exp, functions))
+            case BinOp(left, Add() | Sub() | Mult() as op, right):
+                return BinOp(self.reveal_functions_exp(left, functions), op, self.reveal_functions_exp(right, functions))
+            case BoolOp(And(), [left, right]):
+                left = self.reveal_functions_exp(left, functions)
+                right = self.reveal_functions_exp(right, functions)
+                return IfExp(left, right, Constant(False))
+            case BoolOp(Or(), [left, right]):
+                left = self.reveal_functions_exp(left, functions)
+                right = self.reveal_functions_exp(right, functions)
+                return IfExp(left, Constant(True), right)
+            case BoolOp(op, [left, right]):
+                return BoolOp(op, [self.reveal_functions_exp(left, functions), self.reveal_functions_exp(right, functions)])
+            case Compare(left, [cmp], [right]):
+                return Compare(self.reveal_functions_exp(left, functions), [cmp], [self.reveal_functions_exp(right, functions)])
+            case IfExp(exp, body, orelse):
+                return IfExp(
+                    self.reveal_functions_exp(exp, functions), self.reveal_functions_exp(body, functions), self.reveal_functions_exp(orelse, functions)
+                )
+            case Tuple(elts, Load()):
+                return Tuple([self.reveal_functions_exp(e, functions) for e in elts], Load())
+            case Subscript(lhs, index, Load()):
+                return Subscript(self.reveal_functions_exp(lhs, functions), self.reveal_functions_exp(index, functions), Load())
+            case List(elts, Load()):
+                return List([self.reveal_functions_exp(e, functions) for e in elts], Load())
+            case Call(Name("len"), [exp]):
+                return Call(Name("len"), [self.reveal_functions_exp(exp, functions)])
+            case Call(exp, exps):
+                return Call(self.reveal_functions_exp(exp, functions), [self.reveal_functions_exp(e, functions) for e in exps])
+            case _:
+                return e
+    
+    def reveal_functions_stmt(self, s: stmt, functions: dict[str, int]):
+        match s:
+            case Expr(Call(Name("print"), [exp])):
+                return Expr(Call(Name("print"), [self.reveal_functions_exp(exp, functions)]))
+            case Expr(exp):
+                return Expr(self.reveal_functions_exp(exp, functions))
+            case Assign([Name() as name], exp):
+                return Assign([name], self.reveal_functions_exp(exp, functions))
+            case If(exp, body_stmts, orelse_stmts):
+                return If(
+                    self.reveal_functions_exp(exp, functions),
+                    [self.reveal_functions_stmt(stmt, functions) for stmt in body_stmts],
+                    [self.reveal_functions_stmt(stmt, functions) for stmt in orelse_stmts],
+                )
+            case While(test, body, []):
+                return While(
+                    self.reveal_functions_exp(test, functions), [self.reveal_functions_stmt(stmt, functions) for stmt in body], []
+                )
+            case Assign([Subscript(lhs, index, Store())], rhs):
+                return Assign(
+                    [
+                        Subscript(
+                            self.reveal_functions_exp(lhs, functions),
+                            self.reveal_functions_exp(index, functions),
+                            Store(),
+                        )
+                    ],
+                    self.reveal_functions_exp(rhs, functions),
+                )
+            case Return(exp):
+                return Return(self.reveal_functions_exp(exp, functions))
+            case FunctionDef(name, params, f_body, _, returns):
+                return FunctionDef(name, params, [self.reveal_functions_stmt(s, functions) for s in f_body], None, returns)
+            case _:
+                return s
+
+    def reveal_functions(self, p: Module):
+        match p:
+            case Module(list() as body):
+                functions = {}
+                for func in body:
+                    match func:
+                        case FunctionDef(name, args):
+                            functions[name] = len(args)
+                return Module([self.reveal_functions_stmt(s, functions) for s in body])
 
     ############################################################################
     # Resolve
@@ -491,6 +608,8 @@ class Compiler:
                         return Call(Name("array_len"), [self.resolve_exp(exp)])
                     case _:
                         return Call(Name("len"), [self.resolve_exp(exp)])
+            case Call(exp, exps):
+                return Call(self.resolve_exp(exp), [self.resolve_exp(e) for e in exps])
             case _:
                 return e
 
@@ -542,6 +661,10 @@ class Compiler:
                             ],
                             self.resolve_exp(rhs),
                         )
+            case Return(exp):
+                return Return(self.resolve_exp(exp))
+            case FunctionDef(name, args, f_body, _, returns):
+                return FunctionDef(name, args, [self.resolve_stmt(s) for s in f_body], None, returns)
             case _:
                 return s
 
@@ -611,6 +734,8 @@ class Compiler:
             case Call(Name("array_len"), [arr]):
                 #  array
                 return Call(Name("array_len"), [self.check_bounds_exp(arr)])
+            case Call(exp, exps):
+                return Call(self.check_bounds_exp(exp), [self.check_bounds_exp(e) for e in exps])
             case _:
                 return e
 
@@ -653,6 +778,10 @@ class Compiler:
                 )
             case Expr(exp):
                 return Expr(self.check_bounds_exp(exp))
+            case Return(exp):
+                return Return(self.check_bounds_exp(exp))
+            case FunctionDef(name, args, f_body, _, returns):
+                return FunctionDef(name, args, [self.check_bounds_stmt(s) for s in f_body], None, returns)
             case _:
                 return s
 
@@ -660,6 +789,116 @@ class Compiler:
         match p:
             case Module(list() as body):
                 return Module([self.check_bounds_stmt(stmt) for stmt in body])
+
+    ############################################################################
+    # Limit functions
+    ############################################################################
+
+    def limit_functions_exp(self, e: expr, mapping: dict[str, expr]):
+        match e:
+            case Name(var) if var in mapping:
+                return mapping[var]
+            case UnaryOp(USub() | Not() as op, exp):
+                return UnaryOp(op, self.limit_functions_exp(exp, mapping))
+            case BinOp(left, Add() | Sub() | Mult() as op, right):
+                return BinOp(
+                    self.limit_functions_exp(left, mapping), op, self.limit_functions_exp(right, mapping)
+                )
+            case BoolOp(And(), [left, right]):
+                left = self.limit_functions_exp(left, mapping)
+                right = self.limit_functions_exp(right, mapping)
+                return IfExp(left, right, Constant(False))
+            case BoolOp(Or(), [left, right]):
+                left = self.limit_functions_exp(left, mapping)
+                right = self.limit_functions_exp(right, mapping)
+                return IfExp(left, Constant(True), right)
+            case BoolOp(op, [left, right]):
+                return BoolOp(
+                    op, [self.limit_functions_exp(left, mapping), self.limit_functions_exp(right, mapping)]
+                )
+            case Compare(left, [cmp], [right]):
+                return Compare(
+                    self.limit_functions_exp(left, mapping), [cmp], [self.limit_functions_exp(right, mapping)]
+                )
+            case IfExp(exp, body, orelse):
+                return IfExp(
+                    self.limit_functions_exp(exp, mapping),
+                    self.limit_functions_exp(body, mapping),
+                    self.limit_functions_exp(orelse, mapping),
+                )
+            case Tuple(elts, Load()):
+                return Tuple([self.limit_functions_exp(e, mapping) for e in elts], Load())
+            case Subscript(lhs, Constant(int()) as index, Load()):
+                return Subscript(self.limit_functions_exp(lhs, mapping), index, Load())
+            case List(elts, Load()):
+                return List([self.limit_functions_exp(e, mapping) for e in elts], Load())
+            case Call(exp, exps):
+                if len(exps) > 55:
+                    raise Exception(f"Too much arguments in call {exp}, max = 55, current = {len(exps)}")
+                if len(exps) > 6:
+                    tup = Tuple(exps[5:], Load())
+                    return Call(
+                        self.limit_functions_exp(exp, mapping),
+                        [self.limit_functions_exp(e, mapping) for e in exps[:5]] + [tup])
+                return Call(self.limit_functions_exp(exp, mapping),
+                            [self.limit_functions_exp(e, mapping) for e in exps])
+            case _:
+                return e
+
+    def limit_functions_stmt(self, s: stmt, mapping: dict[str, expr]):
+        match s:
+            case Expr(Call(Name("print"), [exp])):
+                return Expr(Call(Name("print"), [self.limit_functions_exp(exp, mapping)]))
+            case Assign([Name() as name], exp):
+                return Assign([name], self.limit_functions_exp(exp, mapping))
+            case If(exp, body_stmts, orelse_stmts):
+                return If(
+                    self.limit_functions_exp(exp, mapping),
+                    [self.limit_functions_stmt(stmt, mapping) for stmt in body_stmts],
+                    [self.limit_functions_stmt(stmt, mapping) for stmt in orelse_stmts],
+                )
+            case While(test, body, []):
+                return While(
+                    self.limit_functions_exp(test, mapping),
+                    [self.limit_functions_stmt(stmt, mapping) for stmt in body],
+                    [],
+                )
+            case Assign([Subscript(lhs, Constant(int()) as index, Store())], rhs):
+                return Assign([
+                    Subscript(self.limit_functions_exp(lhs, mapping), index, Store())],
+                    self.limit_functions_exp(rhs, mapping))
+            case Expr(Call(Name("array_store"), [lhs, index, rhs])):
+                return Expr(Call(Name("array_store"), [
+                    self.limit_functions_exp(lhs, mapping),
+                    self.limit_functions_exp(index, mapping),
+                    self.limit_functions_exp(rhs, mapping)
+                ]))
+            case Expr(exp):
+                return Expr(self.limit_functions_exp(exp, mapping))
+            case Return(exp):
+                return Return(self.limit_functions_exp(exp, mapping))
+            case FunctionDef(name, params, f_body, _, returns):
+                if len(params) > 55:
+                    raise Exception(f"Too much params in function {name}, max = 55, current = {len(params)}")
+                if len(params) > 6:
+                    tuple_var = generate_name("params_tuple")
+                    tuple_tys = [ty for _, ty in params[5:]]
+                    tuple_ty = TupleType(tuple_tys)
+                    new_params = params[:5] + [(tuple_var, tuple_ty)]
+                    names_mapping = {x: Subscript(Name(tuple_var), Constant(i), Load()) for i, (x, _) in enumerate(params[5:])}
+                    new_mapping = mapping.copy()
+                    new_mapping.update(names_mapping)
+                    return FunctionDef(name, new_params, [self.limit_functions_stmt(s, new_mapping) for s in f_body], None, returns)    
+
+                return FunctionDef(name, params, [self.limit_functions_stmt(s, mapping) for s in f_body], None, returns)
+            case _:
+                return s
+
+    def limit_functions(self, p: Module):
+        match p:
+            case Module(list() as body):
+                mapping = {}
+                return Module([self.limit_functions_stmt(s, mapping) for s in body])
 
     ############################################################################
     # Expose allocation
@@ -802,6 +1041,8 @@ class Compiler:
                 return Call(Name("len"), [self.expose_allocation_exp(exp)])
             case Call(Name("array_len"), [exp]):
                 return Call(Name("array_len"), [self.expose_allocation_exp(exp)])
+            case Call(exp, exps):
+                return Call(self.expose_allocation_exp(exp), [self.expose_allocation_exp(e) for e in exps])
             case _:
                 return e
 
@@ -841,6 +1082,10 @@ class Compiler:
                 )
             case Expr(exp):
                 return Expr(self.expose_allocation_exp(exp))
+            case Return(exp):
+                return Return(self.expose_allocation_exp(exp))
+            case FunctionDef(name, args, f_body, _, returns):
+                return FunctionDef(name, args, [self.expose_allocation_stmt(s) for s in f_body], None, returns)
             case _ as unreacheble:
                 raise Exception(f"Unexpected, {unreacheble}")
 
@@ -856,6 +1101,12 @@ class Compiler:
     def rco_exp(self, e: expr, need_atomic: bool) -> tuple[expr, Temporaries]:
         match e:
             case Constant() | Name() | GlobalValue() | Call(Name("exit"), []):
+                return (e, [])
+            
+            case FunRef():
+                if need_atomic:
+                    new_var = Name(generate_name("fun_tmp"))
+                    return (new_var, [(new_var, e)])
                 return (e, [])
 
             case AllocateArray():
@@ -974,6 +1225,21 @@ class Compiler:
                         [*lhs_temporaries, *index_temporaries, (new_var, new_expr)],
                     )
                 return (new_expr, [*lhs_temporaries, *index_temporaries])
+            case Call(lhs, exps):
+                lhs, lhs_temporaries = self.rco_exp(lhs, True)
+                new_exps = []
+                exps_temporaries = []
+                for e in exps:
+                    new_exp, exp_temporaries = self.rco_exp(e, True)
+                    new_exps.append(new_exp)
+                    exps_temporaries += exp_temporaries
+                new_expr = Call(lhs, new_exps)
+                if need_atomic:
+                    new_var = Name(generate_name("tmp"))
+                    return (
+                        new_var, lhs_temporaries + exps_temporaries + [(new_var, new_expr)]
+                    )
+                return (new_expr, lhs_temporaries + exps_temporaries)
             case _:
                 raise Exception(type(e))
 
@@ -1041,6 +1307,18 @@ class Compiler:
                 new_expr = Expr(expr)
                 return [*assigns, new_expr]
 
+            case Return(exp):
+                expr, temporaries = self.rco_exp(exp, False)
+                assigns = [Assign([name], exp) for name, exp in temporaries]
+                new_expr = Return(expr)
+                return [*assigns, new_expr]
+
+            case FunctionDef(name, args, f_body, _, returns):
+                new_body = []
+                for stmt in f_body:
+                    new_body += self.rco_stmt(stmt)
+                return [FunctionDef(name, args, new_body, None, returns)]
+            
             case _:
                 raise Exception(type(s))
 
@@ -1071,17 +1349,14 @@ class Compiler:
                     )
                     + force(cont)
                 )
-            case Call(Name("input_int"), []):
-                return Promise(lambda: [Expr(e)] + force(cont))
             case Begin(body, result):
                 new_body = self.explicate_effect(result, cont, basic_blocks)
                 for stmt in reversed(body):
                     new_body = self.explicate_stmt(stmt, new_body, basic_blocks)
                 return new_body
-            case Allocate():
+            case Allocate() | AllocateArray() | Call():
+                # also handes Call(Name("input_int"), [])
                 return Promise(lambda: [Expr(e)] + force(cont))
-            case AllocateArray():
-                return Promise(lambda: [Expr(e) + force(cont)])
             case _:
                 return Promise(lambda: force(cont))
 
@@ -1140,33 +1415,18 @@ class Compiler:
                 for stmt in reversed(body):
                     new_body = self.explicate_stmt(stmt, new_body, basic_blocks)
                 return new_body
-            case Subscript(left, index, Load()):
-
+            case Subscript(_, _, Load()) | Call(_, _):
+                # also handles Call(Name("array_load"), [lhs, index])
                 def inner():
                     new_var = Name(generate_name("tmp"))
-                    return [
-                        Assign([new_var], cnd),
-                        If(
-                            Compare(new_var, [Eq()], [Constant(False)]),
-                            force(create_block(els, basic_blocks)),
-                            force(create_block(thn, basic_blocks)),
-                        ),
-                    ]
-
-                return Promise(inner)
-            case Call(Name("array_load"), [lhs, index]):
-
-                def inner():
-                    new_var = Name(generate_name("tmp"))
-                    return [
-                        Assign([new_var], cnd),
-                        If(
-                            Compare(new_var, [Eq()], [Constant(False)]),
-                            force(create_block(els, basic_blocks)),
-                            force(create_block(thn, basic_blocks)),
-                        ),
-                    ]
-
+                    return force(
+                        self.explicate_assign(
+                            cnd,
+                            new_var,
+                            self.explicate_pred(new_var, thn, els, basic_blocks),
+                            basic_blocks
+                        )
+                    )
                 return Promise(inner)
             case _:
                 return Promise(
@@ -1178,6 +1438,24 @@ class Compiler:
                         )
                     ]
                 )
+    
+    def explicate_tail(self, e: expr, basic_blocks: dict[str, list[stmt]]) -> LazySS:
+        match e:
+            case Begin(body, result):
+                new_body = self.explicate_tail(result, basic_blocks)
+                for stmt in reversed(body):
+                    new_body = self.explicate_stmt(stmt, new_body, basic_blocks)
+                return new_body
+            case IfExp(test, body, orelse):
+                def inner():
+                    new_var = Name(generate_name("tmp"))
+                    return self.explicate_assign(e, new_var, [Return(new_var)], basic_blocks)
+                return Promise(inner)
+                # return self.explicate_pred(test, body, orelse, basic_blocks)
+            case Call(callee, args):
+                return [TailCall(callee, args)]
+            case _:
+                return [Return(e)]
 
     def explicate_stmt(
         self, s: stmt, cont: LazySS, basic_blocks: dict[str, list[stmt]]
@@ -1221,18 +1499,28 @@ class Compiler:
                 return Promise(lambda: [s] + force(cont))
             case Expr(value):
                 return self.explicate_effect(value, cont, basic_blocks)
+            case Return(value):
+                return self.explicate_tail(value, basic_blocks)
             case _ as unreacheble:
                 raise Exception(f"Unexpected {unreacheble}")
+
+    def explicate_function(self, f: FunctionDef) -> FunctionDef:
+        match f:
+            case FunctionDef(name, params, f_body, _, returns):
+                basic_blocks = {}
+                new_body = []
+                if name == "main":
+                    new_body += [Return(Constant(0))]
+                for s in reversed(f_body):
+                    new_body = force(self.explicate_stmt(s, new_body, basic_blocks))
+                force(create_block(new_body, basic_blocks))
+                return FunctionDef(label_name(name), params, basic_blocks, None, returns, None)
 
     def explicate_control(self, p):
         match p:
             case Module(body):
-                new_body = [Return(Constant(0))]
-                basic_blocks = {}
-                for s in reversed(body):
-                    new_body = force(self.explicate_stmt(s, new_body, basic_blocks))
-                basic_blocks[label_name("start")] = new_body
-                return CProgram(basic_blocks)
+                defs = [self.explicate_function(f) for f in reversed(body)]
+                return CProgramDefs(defs)
 
     ############################################################################
     # Select Instructions
