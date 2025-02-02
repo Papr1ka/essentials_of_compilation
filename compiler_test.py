@@ -65,6 +65,11 @@ print(map(f, (0, 41))[1])
 
 # print(test(-4))
 # """
+    program = """
+def add(x:int, y:int) -> int:
+    return x + y
+print(add(40, 2))
+"""
     tree = ast.parse(program)
 
     print("\n #Source AST of the program\n")
@@ -130,11 +135,11 @@ print(map(f, (0, 41))[1])
     print()
 
     TypeCheckCfun().type_check(tree)
-    exit(0)
 
     x86_program = compiler.select_instructions(tree)
     print("\n #After selecting instructions\n")
     print(x86_program)
+    exit(0)
 
     g = compiler.build_cfg(x86_program)
     g.show(engine="dot").save("cfg.dot")

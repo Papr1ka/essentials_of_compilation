@@ -62,7 +62,10 @@ cmd_to_cc_mapping = {
 }
 
 is_ptr = lambda x: not (isinstance(x, IntType) or isinstance(x, BoolType))
+params_regs = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"]
 
+label_block_start = lambda name: label_name(name + "_start")
+label_block_conclusion = lambda name: label_name(name + "_conclusion")
 
 class Compiler:
     def __init__(
@@ -1105,7 +1108,7 @@ class Compiler:
             
             case FunRef():
                 if need_atomic:
-                    new_var = Name(generate_name("fun_tmp"))
+                    new_var = Name(generate_name("fun"))
                     return (new_var, [(new_var, e)])
                 return (e, [])
 
@@ -1513,8 +1516,8 @@ class Compiler:
                     new_body += [Return(Constant(0))]
                 for s in reversed(f_body):
                     new_body = force(self.explicate_stmt(s, new_body, basic_blocks))
-                force(create_block(new_body, basic_blocks))
-                return FunctionDef(label_name(name), params, basic_blocks, None, returns, None)
+                basic_blocks[label_block_start(name)] = new_body
+                return FunctionDef(name, params, basic_blocks, None, returns, None)
 
     def explicate_control(self, p):
         match p:
@@ -1536,7 +1539,7 @@ class Compiler:
                 return Immediate(int(val))
             case Constant(value):
                 return Immediate(value)
-            case GlobalValue(var):
+            case GlobalValue(var) | FunRef(var):
                 return Global(var)
 
     def select_exp(self, e: expr, target: None | Variable | Reg) -> list[instr]:
@@ -1550,6 +1553,8 @@ class Compiler:
         match e:
             case Name() | Constant():
                 return [Instr("movq", [self.select_arg(e), target])]
+            case FunRef():
+                return [Instr("leaq", [self.select_arg(e), target])]
             case Call(Name("input_int"), []):
                 return [
                     Callq("read_int", 0),
@@ -1689,6 +1694,15 @@ class Compiler:
                     Instr("movq", [Immediate(255), Reg("rdi")]),
                     Callq("exit", 1),
                 ]
+            case Call(callee, args):
+                params_move_instructions = [
+                    Instr("movq", [self.select_arg(arg), Reg(reg)])
+                    for reg, arg in zip(params_regs, args)
+                ]
+                return params_move_instructions + [
+                    IndirectCallq(self.select_arg(callee), len(args)),
+                    Instr("movq", [Reg("rax"), target])
+                ]
             case _:
                 raise Exception(f"not supported expression: {e}")
 
@@ -1734,12 +1748,12 @@ class Compiler:
             case _:
                 raise Exception("E")
 
-    def select_tail(self, t: stmt) -> list[instr]:
+    def select_tail(self, t: stmt, function_name: str) -> list[instr]:
         match t:
             case Return(value):
                 return [
                     *self.select_exp(value, Reg("rax")),
-                    Jump(label_name("conclusion")),
+                    Jump(label_block_conclusion(function_name)),
                 ]
             case Goto(label):
                 return [Jump(label)]
@@ -1762,22 +1776,46 @@ class Compiler:
                     JumpIf(cc, label_thn),
                     Jump(label_els),
                 ]
-
-    def select_instructions(self, p: CProgram) -> X86Program:
-        match p:
-            case CProgram(basic_blocks, var_types):
+            case TailCall(callee, args):
+                params_move_instructions = [
+                    Instr("movq", [self.select_arg(arg), Reg(reg)])
+                    for reg, arg in zip(params_regs, args)
+                ]
+                return params_move_instructions + [
+                    TailJump(callee, len(args))
+                ]
+            case _:
+                raise Exception("E")
+    
+    def select_function(self, f: FunctionDef) -> FunctionDef:
+        match f:
+            case FunctionDef(name, params, f_blocks, _, returns):
                 assert (
-                    var_types is not None
+                    hasattr(f, "var_types")
                 ), "Type check CTup required to obrain required var_types field"
+                names = [var for var, _ in params]
+                params_move_instructions = [
+                    Instr("movq", [Reg(reg), Variable(var)])
+                    for reg, var in zip(params_regs, names)
+                ]
+                
+                new_f_blocks = {label_block_conclusion(name): []}
 
-                x86_basic_blocks = {label_name("conclusion"): []}
-                for label, (*ss, tail) in basic_blocks.items():
+                for label, (*ss, tail) in f_blocks.items():
                     block = []
                     for stmt in ss:
                         block += self.select_stmt(stmt)
-                    block += self.select_tail(tail)
-                    x86_basic_blocks[label] = block
-                return X86Program(x86_basic_blocks, 0, var_types=var_types)
+                    block += self.select_tail(tail, name)
+                    new_f_blocks[label] = block
+
+                new_f_blocks[label_block_start(name)] = params_move_instructions + new_f_blocks[label_block_start(name)]
+                return FunctionDef(name, [], new_f_blocks, None, returns)
+
+    def select_instructions(self, p: CProgram) -> X86Program:
+        match p:
+            case CProgramDefs(defs):
+                new_defs = [self.select_function(f) for f in defs]
+                return X86ProgramDefs(new_defs)
 
     ############################################################################
     # Liveness analysys

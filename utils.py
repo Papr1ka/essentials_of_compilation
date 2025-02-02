@@ -818,7 +818,8 @@ class CProgram:
 @dataclass
 class CProgramDefs:
     defs: list[stmt]
-    __match_args__ = ("defs",)
+    var_types: dict[str, Type] = None
+    __match_args__ = ("defs", "var_types")
 
     def __str__(self):
         return "\n".join([str(d) for d in self.defs]) + "\n"
