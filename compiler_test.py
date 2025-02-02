@@ -18,19 +18,19 @@ def inc(x : int) -> int:
 print(map(inc, (0, 41))[1])
 """
     
-    program = """
-def map(f : Callable[[int], int], v : tuple[int,int]) -> tuple[int,int]:
-    return f(v[0]), f(v[1])
+#     program = """
+# def map(f : Callable[[int], int], v : tuple[int,int]) -> tuple[int,int]:
+#     return f(v[0]), f(v[1])
 
-def inc(x : int) -> int:
-    return x + 1
+# def inc(x : int) -> int:
+#     return x + 1
 
-def test(f: Callable[[], Callable[[int], int]]) -> Callable[[int], int]:
-    return inc
+# def test(f: Callable[[], Callable[[int], int]]) -> Callable[[int], int]:
+#     return inc
 
-f = test()
-print(map(f, (0, 41))[1])
-"""
+# f = test()
+# print(map(f, (0, 41))[1])
+# """
 #     program = """
 # def map(f : Callable[[int], int], v : tuple[int,int]) -> tuple[int,int]:
 #     return inc(v[0]), inc(v[1])
@@ -65,10 +65,18 @@ print(map(f, (0, 41))[1])
 
 # print(test(-4))
 # """
+#     program = """
+# def add(x:int, y:int) -> int:
+#     return x + y
+# print(add(40, 2))
+# """
     program = """
-def add(x:int, y:int) -> int:
-    return x + y
-print(add(40, 2))
+def tail_sum(n : int, r : int) -> int:
+    if n == 0:
+        return r
+    else:
+        return tail_sum(n - 1, n + r)
+print(tail_sum(3, 0) + 36)
 """
     tree = ast.parse(program)
 
@@ -139,38 +147,40 @@ print(add(40, 2))
     x86_program = compiler.select_instructions(tree)
     print("\n #After selecting instructions\n")
     print(x86_program)
-    exit(0)
 
-    g = compiler.build_cfg(x86_program)
-    g.show(engine="dot").save("cfg.dot")
-    ordering = topological_stable_sort(g)
-    print(ordering)
+    for f in x86_program.defs:
+        g = compiler.build_cfg(f.body)
+        g.show(engine="dot").save(f"cfg_{f.name}.dot")
+        ordering = topological_stable_sort(g)
+        print(ordering)
 
     x86_program = compiler.remove_jumps(x86_program)
     print("\n #After remove jumps\n")
     print(x86_program)
 
     print("Liveless analysys")
-    mapping = compiler.uncover_live(x86_program)
-    for label, block in x86_program.body.items():
-        print(f"{label}:")
-        for instr in block:
-            print(f"{instr}, (({", ".join(map(str, mapping[instr]))}))")
+    for f in x86_program.defs:
+        mapping = compiler.uncover_live(f)
+        for label, block in f.body.items():
+            print(f"{label}:")
+            for instr in block:
+                print(f"{instr}, (({", ".join(map(str, mapping[instr]))}))")
 
-    variables = compiler.collect_vars(x86_program)
-    interference_graph = compiler.build_interference(x86_program)
-    interference_graph.show().save("interference.dot")
+    for f in x86_program.defs:
+        variables = compiler.collect_vars(f.body)
+        interference_graph = compiler.build_interference(f)
+        interference_graph.show().save(f"interference_{f.name}.dot")
 
-    move_graph = compiler.build_move_graph(x86_program)
-    move_graph.show().save("move.dot")
+        move_graph = compiler.build_move_graph(f)
+        move_graph.show().save(f"move_{f.name}.dot")
 
-    mapping = compiler.color_graph(
-        interference_graph,
-        variables,
-        move_graph,
-    )
-    print("the Mapping:")
-    print(mapping)
+        mapping = compiler.color_graph(
+            interference_graph,
+            variables,
+            move_graph,
+        )
+        print("the Mapping:")
+        print(mapping)
 
     x86_program = compiler.assign_homes(x86_program)
     print("\n #After assigning homes\n")
@@ -179,6 +189,7 @@ print(add(40, 2))
     x86_program = compiler.patch_instructions(x86_program)
     print("\n #After patching instructions\n")
     print(x86_program)
+    exit(0)
 
     x86_program = compiler.prelude_and_conclusion(x86_program)
     print("\n# Result\n")

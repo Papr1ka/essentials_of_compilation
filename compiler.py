@@ -66,6 +66,7 @@ params_regs = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"]
 
 label_block_start = lambda name: label_name(name + "_start")
 label_block_conclusion = lambda name: label_name(name + "_conclusion")
+get_used_params_regs = lambda num_params: set(Reg(reg) for reg in params_regs[:num_params]) 
 
 class Compiler:
     def __init__(
@@ -1782,7 +1783,7 @@ class Compiler:
                     for reg, arg in zip(params_regs, args)
                 ]
                 return params_move_instructions + [
-                    TailJump(callee, len(args))
+                    TailJump(self.select_arg(callee), len(args))
                 ]
             case _:
                 raise Exception("E")
@@ -1809,9 +1810,11 @@ class Compiler:
                     new_f_blocks[label] = block
 
                 new_f_blocks[label_block_start(name)] = params_move_instructions + new_f_blocks[label_block_start(name)]
-                return FunctionDef(name, [], new_f_blocks, None, returns)
+                new_def = FunctionDef(name, [], new_f_blocks, None, returns)
+                new_def.var_types = f.var_types
+                return new_def
 
-    def select_instructions(self, p: CProgram) -> X86Program:
+    def select_instructions(self, p: CProgram) -> X86ProgramDefs:
         match p:
             case CProgramDefs(defs):
                 new_defs = [self.select_function(f) for f in defs]
@@ -1831,14 +1834,12 @@ class Compiler:
                 case JumpIf(_, label):
                     graph.add_edge(block_label, label)
 
-    def build_cfg(self, p: X86Program) -> DirectedAdjList:
-        match p:
-            case X86Program(basic_blocks):
-                graph = DirectedAdjList()
-                for label, block in basic_blocks.items():
-                    graph.add_vertex(label)
-                    self.build_cfg_block(label, block, graph)
-                return graph
+    def build_cfg(self, basic_blocks: dict[str, list[instr]]) -> DirectedAdjList:
+        graph = DirectedAdjList()
+        for label, block in basic_blocks.items():
+            graph.add_vertex(label)
+            self.build_cfg_block(label, block, graph)
+        return graph
 
     def compute_locations(self, a: arg) -> Set[location]:
         match a:
@@ -1859,11 +1860,11 @@ class Compiler:
             case Instr("negq" | "pushq", [arg0]):
                 return self.compute_locations(arg0)
             case Callq(_, num_args):
-                return {
-                    0: set(),
-                    1: set([Reg("rdi")]),
-                    2: set([Reg("rdi"), Reg("rsi")]),
-                }[num_args]
+                return get_used_params_regs(num_args)
+            case IndirectCallq(callee_addr, num_args) | TailJump(callee_addr, num_args):
+                read_regs = get_used_params_regs(num_args)
+                read_regs.add(callee_addr)
+                return read_regs
             case _:
                 return set()
 
@@ -1878,7 +1879,7 @@ class Compiler:
                 return self.compute_locations(arg0)
             case Instr(str(instr), [arg0]) if instr.startswith("set"):
                 return self.compute_locations(arg0)
-            case Callq():
+            case Callq() | IndirectCallq():
                 return set(
                     [
                         Reg("rax"),
@@ -1914,10 +1915,10 @@ class Compiler:
             l_after = l_before
         return l_before
 
-    def uncover_live(self, p: X86Program) -> Dict[instr, Set[location]]:
-        match p:
-            case X86Program(dict() as basic_blocks):
-                cfg = self.build_cfg(p)
+    def uncover_live(self, f: FunctionDef) -> Dict[instr, Set[location]]:
+        match f:
+            case FunctionDef(_, _, basic_blocks):
+                cfg = self.build_cfg(basic_blocks)
                 transposed_cfg = transpose(cfg)
                 mapping = {}
 
@@ -1936,39 +1937,49 @@ class Compiler:
     # Remove Jumps
     ############################################################################
 
-    def remove_jumps(self, p: X86Program) -> X86Program:
+    def remove_jumps(self, p: X86ProgramDefs) -> X86ProgramDefs:
         match p:
-            case X86Program(dict() as basic_blocks):
-                cfg = self.build_cfg(p)
-                transposed_cfg = transpose(cfg)
-                ordering: list[str] = topological_stable_sort(transposed_cfg)
+            case X86ProgramDefs(defs):
+                new_defs = []
+                for function in defs:
+                    match function:
+                        case FunctionDef(name, [], basic_blocks, _, returns, _):
+                            assert (
+                                hasattr(function, "var_types")
+                            ), "Type check required to obrain required var_types field"
+                            cfg = self.build_cfg(basic_blocks)
+                            transposed_cfg = transpose(cfg)
+                            ordering: list[str] = topological_stable_sort(transposed_cfg)
 
-                new_basic_blocks = {}
-                for label in ordering:
-                    block = basic_blocks[label]
-                    if label == label_name("conclusion"):
-                        new_basic_blocks[label_name("conclusion")] = block
-                    else:
-                        (*prevs, last) = block
-                        only_one_pred = lambda label: len(set(cfg.ins[label])) == 1
+                            new_basic_blocks = {}
+                            for label in ordering:
+                                block = basic_blocks[label]
+                                if label == label_block_conclusion(name):
+                                    new_basic_blocks[label_block_conclusion(name)] = block
+                                else:
+                                    (*prevs, last) = block
+                                    only_one_pred = lambda label: len(set(cfg.ins[label])) == 1
 
-                        match last:
-                            case Jump(succ_block) if (
-                                succ_block != label_name("conclusion")
-                                and only_one_pred(succ_block)
-                            ):
-                                block_to_merge = new_basic_blocks[succ_block]
-                                new_block = prevs + block_to_merge
-                                new_basic_blocks[label] = new_block
-                                new_basic_blocks.pop(succ_block)
+                                    match last:
+                                        case Jump(succ_block) if (
+                                            succ_block != label_block_conclusion(name)
+                                            and only_one_pred(succ_block)
+                                        ):
+                                            block_to_merge = new_basic_blocks[succ_block]
+                                            new_block = prevs + block_to_merge
+                                            new_basic_blocks[label] = new_block
+                                            new_basic_blocks.pop(succ_block)
 
-                                # handling cfg
-                                for succ in cfg.out[succ_block]:
-                                    cfg.add_edge(label, succ)
-                                cfg.remove_vertex(succ_block)
-                            case _:
-                                new_basic_blocks[label] = block
-                return X86Program(new_basic_blocks, var_types=p.var_types)
+                                            # handling cfg
+                                            for succ in cfg.out[succ_block]:
+                                                cfg.add_edge(label, succ)
+                                            cfg.remove_vertex(succ_block)
+                                        case _:
+                                            new_basic_blocks[label] = block
+                            new_def = FunctionDef(name, [], new_basic_blocks, None, returns, None)
+                            new_def.var_types = function.var_types
+                            new_defs.append(new_def)
+                return X86ProgramDefs(new_defs)
 
     ############################################################################
     # Collect all variables
@@ -1990,23 +2001,25 @@ class Compiler:
             case _:
                 return []
 
-    def collect_vars(self, p: X86Program) -> list[Variable]:
-        match p:
-            case X86Program(dict() as basic_blocks):
-                variables = set()
-                for block in basic_blocks.values():
-                    for instr in block:
-                        variables = variables.union(self.collect_vars_instr(instr))
-                return variables
+    def collect_vars(self, basic_blocks: dict[str, list[instr]]) -> list[Variable]:
+        variables = set()
+        for block in basic_blocks.values():
+            for instr in block:
+                variables = variables.union(self.collect_vars_instr(instr))
+        return variables
 
     ############################################################################
     # Building interference graph
     ############################################################################
 
-    def build_interference(self, p: X86Program) -> UndirectedAdjList:
-        match p:
-            case X86Program(dict() as basic_blocks, _, _, _, var_types):
-                liveness = self.uncover_live(p)
+    def build_interference(self, f: FunctionDef) -> UndirectedAdjList:
+        match f:
+            case FunctionDef(name, _, basic_blocks, _, returns):
+                assert (
+                    hasattr(f, "var_types")
+                ), "Type check CTup required to obrain required var_types field"
+                var_types = f.var_types
+                liveness = self.uncover_live(f)
                 graph = UndirectedAdjList(
                     vertex_label=lambda x: (
                         str(x) if not str(x).startswith("%") else f"\\{x}"
@@ -2022,7 +2035,7 @@ class Compiler:
                                 for v in live_after:
                                     if v != s and v != d:
                                         graph.add_edge(d, v)
-                            case Callq("collect"):
+                            case Callq("collect") | IndirectCallq() | TailJump():
                                 for v in filter(
                                     lambda x: (isinstance(x, Variable)), live_after
                                 ):
@@ -2053,9 +2066,9 @@ class Compiler:
                                             graph.add_edge(d, v)
                 return graph
 
-    def build_move_graph(self, p: X86Program) -> UndirectedAdjList:
-        match p:
-            case X86Program(dict() as basic_blocks):
+    def build_move_graph(self, f: FunctionDef) -> UndirectedAdjList:
+        match f:
+            case FunctionDef(_, _, basic_blocks):
                 graph = UndirectedAdjList()
                 for block in basic_blocks.values():
                     for instr in block:
@@ -2186,7 +2199,6 @@ class Compiler:
                     return Reg(integer_to_register[mapped])
                 else:
                     # stack
-                    # Тут большая проблема, i с какого-то перепуга присвоился и в -8(%rbp) и в -16, из-за этого получился бесконечный цикл
                     if isinstance(var_types[var], TupleType) or isinstance(
                         var_types[var], ListType
                     ):
@@ -2215,6 +2227,12 @@ class Compiler:
         spilled_to_procedure_stack: dict[int, int],
     ) -> instr:
         match i:
+            case IndirectCallq(arg0, num_args):
+                arg0 = self.assign_homes_arg(arg0, home, var_types, spilled_to_root, spilled_to_procedure_stack)
+                return IndirectCallq(arg0, num_args)
+            case TailJump(arg0, arity):
+                arg0 = self.assign_homes_arg(arg0, home, var_types, spilled_to_root, spilled_to_procedure_stack)
+                return TailJump(arg0, arity)
             case Instr(cmd, [arg0, arg1]):
                 arg0 = self.assign_homes_arg(
                     arg0, home, var_types, spilled_to_root, spilled_to_procedure_stack
@@ -2230,14 +2248,19 @@ class Compiler:
                 return Instr(cmd, [arg0])
             case _:
                 return i
-
-    def assign_homes(self, p: X86Program) -> X86Program:
-        match p:
-            case X86Program(dict() as basic_blocks, _, _, _, var_types):
-                interference_graph = self.build_interference(p)
-                variables = self.collect_vars(p)
+    
+    def assign_homes_function(self, f: FunctionDef) -> FunctionDef:
+        match f:
+            case FunctionDef(name, [], basic_blocks, _, returns):
+                assert (
+                    hasattr(f, "var_types")
+                ), "Type check CTup required to obrain required var_types field"
+                var_types = f.var_types
+                interference_graph = self.build_interference(f)
+                variables = self.collect_vars(basic_blocks)
+                move_graph = self.build_move_graph(f)
                 home = self.color_graph(
-                    interference_graph, variables, self.build_move_graph(p)
+                    interference_graph, variables, move_graph
                 )
                 new_blocks = {}
                 spilled_to_root = {}
@@ -2271,9 +2294,17 @@ class Compiler:
                 ]:
                     if color in colors:
                         used_callee.append(reg)
-                return X86Program(
-                    new_blocks, stack_size, used_callee, num_spilled_to_root
-                )
+                new_def = FunctionDef(name, [], new_blocks, None, returns, None)
+                new_def.stack_size = stack_size
+                new_def.used_callee = used_callee
+                new_def.num_spilled_to_root = num_spilled_to_root
+                return new_def
+
+    def assign_homes(self, p: X86ProgramDefs) -> X86ProgramDefs:
+        match p:
+            case X86ProgramDefs(defs):
+                new_defs = [self.assign_homes_function(f) for f in defs]
+                return X86ProgramDefs(new_defs)
 
     ############################################################################
     # Patch Instructions
@@ -2320,6 +2351,24 @@ class Compiler:
                         ]
                     case _:
                         return [i]
+            case Instr("leaq", [arg0, arg1]):
+                match (arg0, arg1):
+                    case (_, Deref()):
+                        return [
+                            Instr("leaq", [arg0, Reg("rax")]),
+                            Instr("movq", [Reg("rax"), arg1])
+                        ]
+                    case _:
+                        return [i]
+            case TailJump(arg0, arity):
+                match arg0:
+                    case Reg("rax"):
+                        return [i]
+                    case _:
+                        return [
+                            Instr("movq", [arg0, Reg("rax")]),
+                            TailJump(Reg("rax"), arity)
+                        ]
             case Instr(cmd, [arg0, arg1]):
                 match (arg0, arg1):
                     case (Deref(), Deref()):
@@ -2337,19 +2386,27 @@ class Compiler:
                         return [i]
             case _:
                 return [i]
-
-    def patch_instructions(self, p: X86Program) -> X86Program:
-        match p:
-            case X86Program(
-                dict() as basic_blocks, stack_space, used_callee, root_spilled
-            ):
+    
+    def patch_function(self, f: FunctionDef) -> FunctionDef:
+        match f:
+            case FunctionDef(name, _, basic_blocks, _, returns):
                 new_blocks = {}
                 for label, block in basic_blocks.items():
                     new_block_body = []
                     for instr in block:
                         new_block_body += self.patch_instr(instr)
                     new_blocks[label] = new_block_body
-                return X86Program(new_blocks, stack_space, used_callee, root_spilled)
+                new_def = FunctionDef(name, [], new_blocks, None, returns, None)
+                new_def.stack_size = f.stack_size
+                new_def.used_callee = f.used_callee
+                new_def.num_spilled_to_root = f.num_spilled_to_root
+                return new_def
+
+    def patch_instructions(self, p: X86ProgramDefs) -> X86ProgramDefs:
+        match p:
+            case X86ProgramDefs(defs):
+                new_defs = [self.patch_function(f) for f in defs]
+                return X86ProgramDefs(new_defs)
 
     ############################################################################
     # Prelude & Conclusion
