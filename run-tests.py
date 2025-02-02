@@ -9,9 +9,11 @@ import interp_Ltup
 import interp_Lwhile
 import type_check_Carray
 import type_check_Ctup
+import type_check_Cfun
 import type_check_Larray
 import type_check_Ltup
 import type_check_Lwhile
+import type_check_Lfun
 
 sys.path.append("../python-student-support-code")
 sys.path.append("../python-student-support-code/interp_x86")
@@ -33,15 +35,17 @@ typecheck_Lif = type_check_Lif.TypeCheckLif().type_check
 typecheck_Lwhile = type_check_Lwhile.TypeCheckLwhile().type_check
 typecheck_Ltup = type_check_Ltup.TypeCheckLtup().type_check
 typecheck_Larray = type_check_Larray.TypeCheckLarray().type_check
+typecheck_Lfun = type_check_Lfun.TypeCheckLfun().type_check
 typecheck_Ctup = type_check_Ctup.TypeCheckCtup().type_check
 typecheck_Carray = type_check_Carray.TypeCheckCarray().type_check
+typecheck_Cfun = type_check_Cfun.TypeCheckCfun().type_check
 
 typecheck_dict = {
-    "source": typecheck_Larray,
-    "shrink": typecheck_Larray,
-    "resolve": typecheck_Larray,
-    "check_bounds": typecheck_Larray,
-    "explicate_control": typecheck_Carray,
+    "source": typecheck_Lfun,
+    "reveal_functions": typecheck_Lfun,
+    "resolve": typecheck_Lfun,
+    "limit_functions": typecheck_Lfun,
+    "explicate_control": typecheck_Cfun,
 }
 interpLvar = interp_Lvar.InterpLvar().interp
 interpLif = interp_Lif.InterpLif().interp

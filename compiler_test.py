@@ -9,13 +9,10 @@ from type_check_Lfun import TypeCheckLfun
 
 if __name__ == "__main__":
     program = """
-def map(f : Callable[[int], int], v : tuple[int,int]) -> tuple[int,int]:
-    return f(v[0]), f(v[1])
+def add(x:int, y:int) -> int:
+    return x + y
 
-def inc(x : int) -> int:
-    return x + 1
-
-print(map(inc, (0, 41))[1])
+print(add(40, 2))
 """
     
 #     program = """
@@ -70,19 +67,20 @@ print(map(inc, (0, 41))[1])
 #     return x + y
 # print(add(40, 2))
 # """
-    program = """
-def tail_sum(n : int, r : int) -> int:
-    if n == 0:
-        return r
-    else:
-        return tail_sum(n - 1, n + r)
-print(tail_sum(3, 0) + 36)
-"""
+#     program = """
+# def tail_sum(n : int, r : int) -> int:
+#     if n == 0:
+#         return r
+#     else:
+#         return tail_sum(n - 1, n + r)
+# print(tail_sum(3, 0) + 36)
+# """
     tree = ast.parse(program)
 
     print("\n #Source AST of the program\n")
     print(program)
-    # print(ast.dump(tree, indent=2))
+    print(repr(program))
+    print(ast.dump(tree, indent=2))
 
     # interp_Larray.InterpLarray().interp(tree)
     print()
@@ -189,7 +187,6 @@ print(tail_sum(3, 0) + 36)
     x86_program = compiler.patch_instructions(x86_program)
     print("\n #After patching instructions\n")
     print(x86_program)
-    exit(0)
 
     x86_program = compiler.prelude_and_conclusion(x86_program)
     print("\n# Result\n")
@@ -197,3 +194,5 @@ print(tail_sum(3, 0) + 36)
 
     with open("cp.s", "w") as file:
         file.write(str(x86_program))
+
+    exit(0)

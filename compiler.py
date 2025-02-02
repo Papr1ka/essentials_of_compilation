@@ -365,7 +365,7 @@ class Compiler:
                 return [
                     FunctionDef(name,
                                 args,
-                                [self.pe_stmt(stmt) for stmt in f_body],
+                                sum([self.pe_stmt(stmt) for stmt in f_body], []),
                                 decorator_list,
                                 returns,
                                 type_comment,
@@ -1453,7 +1453,7 @@ class Compiler:
             case IfExp(test, body, orelse):
                 def inner():
                     new_var = Name(generate_name("tmp"))
-                    return self.explicate_assign(e, new_var, [Return(new_var)], basic_blocks)
+                    return force(self.explicate_assign(e, new_var, [Return(new_var)], basic_blocks))
                 return Promise(inner)
                 # return self.explicate_pred(test, body, orelse, basic_blocks)
             case Call(callee, args):
@@ -1543,7 +1543,7 @@ class Compiler:
             case GlobalValue(var) | FunRef(var):
                 return Global(var)
 
-    def select_exp(self, e: expr, target: None | Variable | Reg) -> list[instr]:
+    def select_exp(self, e: expr, target: None | Variable | Reg = None) -> list[instr]:
         if target is None:
             match e:
                 case Call(Name("input_int"), []):
@@ -2412,44 +2412,82 @@ class Compiler:
     # Prelude & Conclusion
     ############################################################################
 
-    def prelude_and_conclusion(self, p: X86Program) -> X86Program:
+    def prelude_and_conclusion(self, p: X86ProgramDefs) -> X86Program:
         match p:
-            case X86Program(
-                dict() as basic_blocks, stack_space, used_callee, root_spilled
-            ):
+            case X86ProgramDefs(defs):
+                all_blocks = {}
+                for function in defs:
+                    match function:
+                        case FunctionDef(name, _, basic_blocks):
+                            stack_space = function.stack_size
+                            used_callee = function.used_callee
+                            root_spilled = function.num_spilled_to_root
 
-                align = lambda x: x + 8 if x % 16 != 0 else x
-                used_by_callee = len(used_callee) * 8 - 8
-                stack_space = align(stack_space + used_by_callee) - used_by_callee
-                prelude = [
-                    *[
-                        Instr("pushq", [callee_saved_reg])
-                        for callee_saved_reg in used_callee
-                    ],
-                    Instr("movq", [Reg("rsp"), Reg("rbp")]),
-                    Instr("subq", [Immediate(stack_space), Reg("rsp")]),
-                    Instr("movq", [Immediate(self.root_size), Reg("rdi")]),
-                    Instr("movq", [Immediate(self.heap_size), Reg("rsi")]),
-                    Callq("initialize", 2),
-                    Instr("movq", [Global("rootstack_begin"), Reg("r15")]),
-                    *[
-                        Instr("movq", [Immediate(0), Deref("r15", i * 8)])
-                        for i in range(root_spilled)
-                    ],
-                    Instr("addq", [Immediate(root_spilled * 8), Reg("r15")]),
-                    Jump("start"),
-                ]
-                conclusion = [
-                    Instr("subq", [Immediate(root_spilled * 8), Reg("r15")]),
-                    Instr("addq", [Immediate(stack_space), Reg("rsp")]),
-                    *[
-                        Instr("popq", [callee_saved_reg])
-                        for callee_saved_reg in reversed(used_callee)
-                    ],
-                    Instr("retq", []),
-                ]
+                            align = lambda x: x + 8 if x % 16 != 0 else x
+                            used_by_callee = len(used_callee) * 8 - 8
+                            stack_space = align(stack_space + used_by_callee) - used_by_callee
 
-                basic_blocks[label_name("main")] = prelude
-                basic_blocks[label_name("conclusion")] = conclusion
+                            new_basic_blocks = {}
 
-                return X86Program(basic_blocks, stack_space)
+                            
+                            for label, ss in basic_blocks.items():
+                                if len(ss) == 0:
+                                    continue
+
+                                *ss, tail = ss
+                                
+                                match tail:
+                                    case TailJump(callee):
+                                        pop_frame = [
+                                            Instr("subq", [Immediate(root_spilled * 8), Reg("r15")]),
+                                            Instr("addq", [Immediate(stack_space), Reg("rsp")]),
+                                            *[
+                                                Instr("popq", [callee_saved_reg])
+                                                for callee_saved_reg in reversed(used_callee)
+                                            ],
+                                            IndirectJump(callee)
+                                        ]
+                                        new_basic_blocks[label] = ss + pop_frame
+                                    case _:
+                                        new_basic_blocks[label] = ss + [tail]
+
+                            prelude = [
+                                *[
+                                    Instr("pushq", [callee_saved_reg])
+                                    for callee_saved_reg in used_callee
+                                ],
+                                Instr("movq", [Reg("rsp"), Reg("rbp")]),
+                                Instr("subq", [Immediate(stack_space), Reg("rsp")])
+                            ]
+                            if name == 'main':
+                                prelude += [
+                                    Instr("movq", [Immediate(self.root_size), Reg("rdi")]),
+                                    Instr("movq", [Immediate(self.heap_size), Reg("rsi")]),
+                                    Callq("initialize", 2),
+                                    Instr("movq", [Global("rootstack_begin"), Reg("r15")]),
+                                ]
+                            prelude += [
+                                Instr("addq", [Immediate(root_spilled * 8), Reg("r15")]),
+                                *[
+                                    Instr("movq", [Immediate(0), Deref("r15", i * 8)])
+                                    for i in range(root_spilled)
+                                ],
+                                Jump(label_block_start(name)),
+                            ]
+
+                            conclusion = [
+                                Instr("subq", [Immediate(root_spilled * 8), Reg("r15")]),
+                                Instr("addq", [Immediate(stack_space), Reg("rsp")]),
+                                *[
+                                    Instr("popq", [callee_saved_reg])
+                                    for callee_saved_reg in reversed(used_callee)
+                                ],
+                                Instr("retq", []),
+                            ]
+
+                            new_basic_blocks[label_name(name)] = prelude
+                            new_basic_blocks[label_block_conclusion(name)] = conclusion
+
+                            all_blocks.update(new_basic_blocks)
+
+                return X86Program(all_blocks)

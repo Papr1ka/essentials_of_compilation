@@ -1,55 +1,47 @@
 	.align 16
-conclusion:
-    subq $0, %r15
-    addq $8, %rsp
-    popq %rbx
-    popq %rbp
-    retq 
-
-	.align 16
-block.126:
+block.289:
     movq %rcx, %rdi
     callq print_int
     movq $0, %rax
-    jmp conclusion
+    jmp main_conclusion
 
 	.align 16
-block.127:
+block.290:
     negq %rcx
-    jmp block.126
+    jmp block.289
 
 	.align 16
-block.128:
+block.291:
     movq $4, %rcx
-    jmp block.127
+    jmp block.290
 
 	.align 16
-block.130:
+block.293:
     cmpq $2, %rbx
-    je block.128
+    je block.291
     movq %rbx, %rcx
     subq $2, %rcx
-    jmp block.127
+    jmp block.290
 
 	.align 16
-block.132:
+block.295:
     callq read_int
     movq %rax, %rcx
     cmpq $4, %rcx
-    je block.130
+    je block.293
     movq $1, %rcx
-    jmp block.126
+    jmp block.289
 
 	.align 16
-block.133:
+block.296:
     callq read_int
     movq %rax, %rcx
     cmpq $127, %rcx
-    jl block.130
-    jmp block.132
+    jl block.293
+    jmp block.295
 
 	.align 16
-start:
+main_start:
     movq $8, %rbx
     callq read_int
     movq %rax, %rcx
@@ -57,8 +49,8 @@ start:
     setg %al
     movzbq %al, %rcx
     cmpq $0, %rcx
-    je block.133
-    jmp block.132
+    je block.296
+    jmp block.295
 
 	.globl main
 	.align 16
@@ -72,6 +64,14 @@ main:
     callq initialize
     movq rootstack_begin(%rip), %r15
     addq $0, %r15
-    jmp start
+    jmp main_start
+
+	.align 16
+main_conclusion:
+    subq $0, %r15
+    addq $8, %rsp
+    popq %rbx
+    popq %rbp
+    retq 
 
 

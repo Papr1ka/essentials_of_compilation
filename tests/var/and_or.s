@@ -1,191 +1,180 @@
 	.align 16
-conclusion:
-    subq $0, %r15
-    addq $0, %rsp
-    popq %r14
-    popq %r13
-    popq %r12
-    popq %rbx
-    popq %rbp
-    retq 
-
-	.align 16
-block.84:
+block.18:
     movq $0, %rax
-    jmp conclusion
+    jmp main_conclusion
 
 	.align 16
-block.85:
+block.19:
     movq $12, %rdi
     callq print_int
-    jmp block.84
+    jmp block.18
 
 	.align 16
-block.88:
+block.22:
     cmpq $0, %r13
-    je block.85
-    cmpq $0, %r12
-    je block.85
+    je block.19
+    cmpq $0, %rbx
+    je block.19
     movq $11, %rdi
     callq print_int
-    jmp block.84
+    jmp block.18
 
 	.align 16
-block.90:
+block.24:
     callq read_int
-    movq %rax, %rbx
+    movq %rax, %r12
     callq read_int
     movq %rax, %rcx
-    cmpq %rcx, %rbx
-    jl block.88
+    cmpq %rcx, %r12
+    jl block.22
     movq $13, %rdi
     callq print_int
-    jmp block.84
+    jmp block.18
 
 	.align 16
-block.91:
+block.25:
     movq $9, %rdi
     callq print_int
-    jmp block.90
+    jmp block.24
 
 	.align 16
-block.96:
+block.30:
     callq read_int
     movq %rax, %rcx
     cmpq $4, %rcx
-    je block.91
+    je block.25
     callq read_int
     movq %rax, %rcx
     subq $4, %rcx
     cmpq $0, %rcx
-    je block.91
+    je block.25
     callq read_int
     movq %rax, %rcx
     cmpq $8, %rcx
-    je block.91
+    je block.25
     callq read_int
     movq %rax, %rcx
     cmpq $9, %rcx
-    je block.91
+    je block.25
     movq $10, %rdi
     callq print_int
-    jmp block.90
+    jmp block.24
 
 	.align 16
-block.98:
-    movq $8, %rdi
-    callq print_int
-    jmp block.96
-
-	.align 16
-block.97:
+block.31:
     movq $7, %rdi
     callq print_int
-    jmp block.96
+    jmp block.30
 
 	.align 16
-block.99:
+block.32:
+    movq $8, %rdi
+    callq print_int
+    jmp block.30
+
+	.align 16
+block.33:
     callq read_int
     movq %rax, %rcx
     cmpq $8, %rcx
-    je block.97
-    jmp block.98
+    je block.31
+    jmp block.32
 
 	.align 16
-block.100:
+block.34:
     callq read_int
     movq %rax, %rcx
     subq $4, %rcx
     cmpq $0, %rcx
-    je block.99
-    jmp block.98
+    je block.33
+    jmp block.32
 
 	.align 16
-block.101:
+block.35:
     callq read_int
     movq %rax, %rcx
     cmpq $4, %rcx
-    je block.100
-    jmp block.98
+    je block.34
+    jmp block.32
 
 	.align 16
-block.102:
+block.36:
     movq $6, %rdi
     callq print_int
-    jmp block.101
+    jmp block.35
 
 	.align 16
-block.105:
+block.39:
     cmpq $0, %r14
-    je block.102
-    cmpq $0, %rbx
-    je block.102
+    je block.36
+    cmpq $0, %r12
+    je block.36
     movq $5, %rdi
     callq print_int
-    jmp block.101
+    jmp block.35
 
 	.align 16
-block.107:
+block.41:
     movq $2, %rdi
     callq print_int
-    jmp block.105
+    jmp block.39
 
 	.align 16
-block.106:
+block.40:
     movq $3, %rdi
     callq print_int
-    jmp block.105
+    jmp block.39
 
 	.align 16
-block.108:
+block.42:
     callq read_int
     movq %rax, %rcx
     cmpq $4, %rcx
-    je block.107
-    jmp block.106
+    je block.41
+    jmp block.40
 
 	.align 16
-block.110:
-    cmpq $0, %rbx
-    je block.106
+block.44:
+    cmpq $0, %r12
+    je block.40
     cmpq $0, %r13
-    je block.108
-    jmp block.107
+    je block.42
+    jmp block.41
 
 	.align 16
-block.112:
-    movq $0, %rdi
-    callq print_int
-    jmp block.110
-
-	.align 16
-block.111:
+block.45:
     movq $1, %rdi
     callq print_int
-    jmp block.110
+    jmp block.44
 
 	.align 16
-block.113:
+block.46:
+    movq $0, %rdi
+    callq print_int
+    jmp block.44
+
+	.align 16
+block.47:
     cmpq $0, %r13
-    je block.111
-    jmp block.112
+    je block.45
+    jmp block.46
 
 	.align 16
-block.114:
-    cmpq $0, %rbx
-    je block.113
-    jmp block.112
+block.48:
+    cmpq $0, %r12
+    je block.47
+    jmp block.46
 
 	.align 16
-start:
+main_start:
     movq $1, %r13
-    movq $0, %r12
+    movq $0, %rbx
     movq $0, %rcx
-    movq $1, %rbx
+    movq $1, %r12
     movq $0, %r14
     cmpq $0, %rcx
-    je block.114
-    jmp block.112
+    je block.48
+    jmp block.46
 
 	.globl main
 	.align 16
@@ -202,6 +191,17 @@ main:
     callq initialize
     movq rootstack_begin(%rip), %r15
     addq $0, %r15
-    jmp start
+    jmp main_start
+
+	.align 16
+main_conclusion:
+    subq $0, %r15
+    addq $0, %rsp
+    popq %r14
+    popq %r13
+    popq %r12
+    popq %rbx
+    popq %rbp
+    retq 
 
 

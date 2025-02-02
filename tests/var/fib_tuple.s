@@ -1,31 +1,21 @@
 	.align 16
-conclusion:
-    subq $0, %r15
-    addq $8, %rsp
-    popq %r13
-    popq %r12
-    popq %rbx
-    popq %rbp
-    retq 
-
-	.align 16
-block.266:
+block.335:
     movq free_ptr(%rip), %r11
     addq $24, free_ptr(%rip)
     movq $5, 0(%r11)
     movq %r11, %rcx
     movq %rcx, %r11
-    movq %rbx, 8(%r11)
+    movq %r13, 8(%r11)
     movq %rcx, %r11
     movq %r12, 16(%r11)
     movq %rcx, %r12
-    addq $1, %r13
-    jmp block.265
+    addq $1, %rbx
+    jmp block.334
 
 	.align 16
-block.268:
+block.337:
     movq %r12, %r11
-    movq 16(%r11), %rbx
+    movq 16(%r11), %r13
     movq %r12, %r11
     movq 8(%r11), %rcx
     movq %r12, %r11
@@ -35,16 +25,16 @@ block.268:
     movq free_ptr(%rip), %rcx
     addq $24, %rcx
     cmpq fromspace_end(%rip), %rcx
-    jl block.266
+    jl block.335
     movq %r15, %rdi
     movq $24, %rsi
     callq collect
-    jmp block.266
+    jmp block.335
 
 	.align 16
-block.265:
-    cmpq $8, %r13
-    jl block.268
+block.334:
+    cmpq $8, %rbx
+    jl block.337
     movq %r12, %r11
     movq 8(%r11), %rcx
     movq %r12, %r11
@@ -53,34 +43,34 @@ block.265:
     movq %rcx, %rdi
     callq print_int
     movq $0, %rax
-    jmp conclusion
+    jmp main_conclusion
 
 	.align 16
-block.270:
+block.339:
     movq free_ptr(%rip), %r11
     addq $24, free_ptr(%rip)
     movq $5, 0(%r11)
     movq %r11, %rcx
     movq %rcx, %r11
-    movq %rbx, 8(%r11)
+    movq %r12, 8(%r11)
     movq %rcx, %r11
-    movq %r12, 16(%r11)
+    movq %rbx, 16(%r11)
     movq %rcx, %r12
-    movq $0, %r13
-    jmp block.265
+    movq $0, %rbx
+    jmp block.334
 
 	.align 16
-start:
-    movq $0, %rbx
-    movq $1, %r12
+main_start:
+    movq $0, %r12
+    movq $1, %rbx
     movq free_ptr(%rip), %rcx
     addq $24, %rcx
     cmpq fromspace_end(%rip), %rcx
-    jl block.270
+    jl block.339
     movq %r15, %rdi
     movq $24, %rsi
     callq collect
-    jmp block.270
+    jmp block.339
 
 	.globl main
 	.align 16
@@ -96,6 +86,16 @@ main:
     callq initialize
     movq rootstack_begin(%rip), %r15
     addq $0, %r15
-    jmp start
+    jmp main_start
+
+	.align 16
+main_conclusion:
+    subq $0, %r15
+    addq $8, %rsp
+    popq %r13
+    popq %r12
+    popq %rbx
+    popq %rbp
+    retq 
 
 
