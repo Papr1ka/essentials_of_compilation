@@ -4,58 +4,58 @@ block.312:
     jmp main_conclusion
 
 	.align 16
-block.316:
-    callq print_int
-    jmp block.312
-
-	.align 16
 block.313:
     movq $1, %rdi
     callq print_int
     jmp block.312
 
 	.align 16
+block.316:
+    callq print_int
+    jmp block.312
+
+	.align 16
 block.315:
-    movq %rdx, %rdi
-    subq %rsi, %rdi
-    movq %rsi, %rdx
-    movq %rdi, %rsi
-    addq $1, %rcx
+    movq %rsi, %rdi
+    subq %rcx, %rdi
+    movq %rcx, %rsi
+    movq %rdi, %rcx
+    addq $1, %rdx
     jmp block.314
 
 	.align 16
 block.314:
-    cmpq $0, %rcx
+    cmpq $0, %rdx
     jl block.315
     jmp block.316
 
 	.align 16
 block.318:
-    movq %rsi, %rdi
-    addq %rdx, %rdi
-    movq %rdx, %rsi
-    movq %rdi, %rdx
-    subq $1, %rcx
+    movq %rcx, %rdi
+    addq %rsi, %rdi
+    movq %rsi, %rcx
+    movq %rdi, %rsi
+    subq $1, %rdx
     jmp block.317
 
 	.align 16
 block.317:
-    cmpq $0, %rcx
+    cmpq $0, %rdx
     jg block.318
     jmp block.316
 
 	.align 16
 main_start:
     callq read_int
-    movq %rax, %rcx
-    movq $0, %rsi
-    movq $1, %rdx
+    movq %rax, %rdx
+    movq $0, %rcx
+    movq $1, %rsi
     movq $0, %rdi
-    cmpq $1, %rcx
+    cmpq $1, %rdx
     je block.313
-    cmpq $0, %rcx
+    cmpq $0, %rdx
     jl block.314
-    subq $1, %rcx
+    subq $1, %rdx
     jmp block.317
 
 	.globl main

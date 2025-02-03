@@ -23,11 +23,11 @@ block.124:
 	.align 16
 block.126:
     movq %r13, %r11
-    movq 0(%r11), %rdx
-    movq $4611686018427387900, %rcx
-    andq %rcx, %rdx
-    sarq $2, %rdx
-    cmpq %rdx, %r12
+    movq 0(%r11), %rcx
+    movq $4611686018427387900, %rdx
+    andq %rdx, %rcx
+    sarq $2, %rcx
+    cmpq %rcx, %r12
     jl block.124
     jmp block.125
 
@@ -40,11 +40,11 @@ block.127:
 	.align 16
 block.122:
     movq %r13, %r11
-    movq 0(%r11), %rdx
-    movq $4611686018427387900, %rcx
-    andq %rcx, %rdx
-    sarq $2, %rdx
-    cmpq %rdx, %r12
+    movq 0(%r11), %rcx
+    movq $4611686018427387900, %rdx
+    andq %rdx, %rcx
+    sarq $2, %rcx
+    cmpq %rcx, %r12
     jl block.127
     movq %rbx, %rdi
     callq print_int
@@ -59,11 +59,11 @@ block.129:
     movq %rax, 0(%r11)
     movq %r11, %rcx
     movq %rcx, %r11
-    movq %r12, 8(%r11)
+    movq %r13, 8(%r11)
     movq %rcx, %r11
-    movq %rbx, 16(%r11)
+    movq %r12, 16(%r11)
     movq %rcx, %r11
-    movq %r13, 24(%r11)
+    movq %rbx, 24(%r11)
     movq %rcx, %r11
     movq %r14, 32(%r11)
     movq %rcx, %r11
@@ -76,9 +76,9 @@ block.129:
 
 	.align 16
 main_start:
-    movq $1, %r12
-    movq $2, %rbx
-    movq $3, %r13
+    movq $1, %r13
+    movq $2, %r12
+    movq $3, %rbx
     movq $4, %r14
     movq $5, -16(%rbp)
     movq free_ptr(%rip), %rcx

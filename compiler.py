@@ -555,6 +555,7 @@ class Compiler:
                     match func:
                         case FunctionDef(name, args):
                             functions[name] = len(args)
+                            
                 return Module([self.reveal_functions_stmt(s, functions) for s in body])
 
     ############################################################################
@@ -1512,9 +1513,9 @@ class Compiler:
         match f:
             case FunctionDef(name, params, f_body, _, returns):
                 basic_blocks = {}
-                new_body = []
+                new_body = [Goto(label_block_conclusion(name))]
                 if name == "main":
-                    new_body += [Return(Constant(0))]
+                    new_body = [Return(Constant(0))]
                 for s in reversed(f_body):
                     new_body = force(self.explicate_stmt(s, new_body, basic_blocks))
                 basic_blocks[label_block_start(name)] = new_body
@@ -1548,6 +1549,19 @@ class Compiler:
             match e:
                 case Call(Name("input_int"), []):
                     return [Callq("read_int", 0)]
+                case Call(Name("exit"), []):
+                    return [
+                        Instr("movq", [Immediate(255), Reg("rdi")]),
+                        Callq("exit", 1),
+                    ]
+                case Call(callee, args):
+                    params_move_instructions = [
+                        Instr("movq", [self.select_arg(arg), Reg(reg)])
+                        for reg, arg in zip(params_regs, args)
+                    ]
+                    return params_move_instructions + [
+                        IndirectCallq(self.select_arg(callee), len(args))
+                    ]
                 case _:
                     return []
 

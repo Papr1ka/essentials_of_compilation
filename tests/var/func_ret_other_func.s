@@ -5,12 +5,12 @@ block.881:
     movq $5, 0(%r11)
     movq %r11, %rcx
     movq %rcx, %r11
-    movq %rbx, 8(%r11)
+    movq %r13, 8(%r11)
     movq %rcx, %r11
     movq %r14, 16(%r11)
-    movq %r12, %rdi
+    movq %rbx, %rdi
     movq %rcx, %rsi
-    callq *%r13
+    callq *%r12
     movq %rax, %rcx
     movq %rcx, %r11
     movq 16(%r11), %rdi
@@ -22,9 +22,9 @@ block.881:
 main_start:
     leaq test(%rip), %rcx
     callq *%rcx
-    movq %rax, %r12
-    leaq map(%rip), %r13
-    movq $0, %rbx
+    movq %rax, %rbx
+    leaq map(%rip), %r12
+    movq $0, %r13
     movq $41, %r14
     movq free_ptr(%rip), %rcx
     addq $24, %rcx

@@ -17,20 +17,20 @@ block.641:
 
 	.align 16
 block.642:
-    movq %r12, %rdi
+    movq %rbx, %rdi
     jmp block.641
 
 	.align 16
 main_start:
     callq read_int
-    movq %rax, %r12
-    callq read_int
     movq %rax, %rbx
     callq read_int
+    movq %rax, %r12
+    callq read_int
     movq %rax, %rcx
-    cmpq %rbx, %r12
+    cmpq %r12, %rbx
     jg block.642
-    movq %rbx, %rdi
+    movq %r12, %rdi
     jmp block.641
 
 	.globl main

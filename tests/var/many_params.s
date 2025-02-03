@@ -5,11 +5,11 @@ block.862:
     movq $11, 0(%r11)
     movq %r11, %r9
     movq %r9, %r11
-    movq %r14, 8(%r11)
+    movq %rbx, 8(%r11)
     movq %r9, %r11
-    movq %r12, 16(%r11)
+    movq %r13, 16(%r11)
     movq %r9, %r11
-    movq %rbx, 24(%r11)
+    movq %r14, 24(%r11)
     movq %r9, %r11
     movq -8(%rbp), %rax
     movq %rax, 32(%r11)
@@ -21,7 +21,7 @@ block.862:
     movq $3, %rdx
     movq $4, %rcx
     movq $5, %r8
-    callq *%r13
+    callq *%r12
     movq %rax, %rdi
     callq print_int
     movq $0, %rax
@@ -42,13 +42,13 @@ block.864:
     movq $3, %rdx
     movq $4, %rcx
     movq $5, %r8
-    callq *%r12
+    callq *%r13
     movq %rax, %rdi
     callq print_int
-    leaq sum10(%rip), %r13
-    movq $6, %r14
-    movq $7, %r12
-    movq $8, %rbx
+    leaq sum10(%rip), %r12
+    movq $6, %rbx
+    movq $7, %r13
+    movq $8, %r14
     movq $9, -8(%rbp)
     movq $10, -16(%rbp)
     movq free_ptr(%rip), %rcx
@@ -81,7 +81,7 @@ main_start:
     callq *%rbx
     movq %rax, %rdi
     callq print_int
-    leaq sum7(%rip), %r12
+    leaq sum7(%rip), %r13
     movq $6, %rbx
     movq $7, %r14
     movq free_ptr(%rip), %rcx

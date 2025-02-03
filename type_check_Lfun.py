@@ -57,7 +57,7 @@ class TypeCheckLfun(TypeCheckLarray):
           return IntType() 
         case t if t == bool:
           return BoolType()
-        case t if t == type(None):
+        case t if t == None:
           return VoidType()
         case Constant(None):
           return VoidType()

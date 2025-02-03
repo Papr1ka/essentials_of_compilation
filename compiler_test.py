@@ -75,6 +75,85 @@ print(add(40, 2))
 #         return tail_sum(n - 1, n + r)
 # print(tail_sum(3, 0) + 36)
 # """
+    program = """
+def print_matrix(a: list[list[int]]):
+    m = len(a)
+    p = len(a[0])
+    i = 0
+    while i < m:
+        j = 0
+        while j < p:
+            print(a[i][j])
+            j = j + 1
+        i = i + 1
+
+# A, m x n
+A = [[1, 2], [3, 4], [9, 11]]
+print_matrix(A)
+"""
+    program = """
+def matmul(a: list[list[int]], b: list[list[int]], c: list[list[int]]) -> int:
+    m = len(a)
+    n = len(a[0])
+    p = len(b[0])
+
+    i = 0
+    while i < m:
+        j = 0
+        while j < p:
+            k = 0
+            r = 0
+            while k < n:
+                r = r + (a[i][k] * b[k][j])
+                k = k + 1
+            c[i][j] = r
+            j = j + 1
+        i = i + 1
+    return 0
+
+def print_matrix(a: list[list[int]]) -> int:
+    m = len(a)
+    p = len(a[0])
+    i = 0
+    while i < m:
+        j = 0
+        while j < p:
+            print(a[i][j])
+            j = j + 1
+        i = i + 1
+    return 0
+
+# A, m x n
+A = [[1, 2], [3, 4], [9, 11]]
+# B, n x p
+B = [[5, 6, 6], [7, 8, 12]]
+# R, m x p
+R = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+
+# Result to R
+matmul(A, B, R)
+print_matrix(R)
+"""
+    program = """
+def add(x:int, y:int):
+    print(x + y)
+
+add(40, 2)
+"""
+    program = """
+arr = [1, 2, 3, 4, 5]
+reverse = [0, 0, 0, 0, 0]
+
+i = 0
+while i < len(arr):
+    reverse[len(reverse) - i - 1] = arr[i]
+    i = i + 1
+
+i = 0
+while i < len(reverse):
+    print(reverse[i])
+    i = i + 1
+"""
     tree = ast.parse(program)
 
     print("\n #Source AST of the program\n")

@@ -5,19 +5,19 @@ block.305:
 
 	.align 16
 block.306:
-    movq %r13, %rdi
-    addq %rbx, %rdi
-    movq %rbx, %r13
-    movq %rdi, %rbx
+    movq %rbx, %rdi
+    addq %r13, %rdi
+    movq %r13, %rbx
+    movq %rdi, %r13
     subq $1, %r12
     jmp block.305
 
 	.align 16
 block.308:
-    movq %r13, %rdi
-    addq %rbx, %rdi
-    movq %rbx, %r13
-    movq %rdi, %rbx
+    movq %rbx, %rdi
+    addq %r13, %rdi
+    movq %r13, %rbx
+    movq %rdi, %r13
     subq $1, %r12
     cmpq $0, %r12
     jg block.306
@@ -26,10 +26,10 @@ block.308:
 
 	.align 16
 block.310:
-    movq %r13, %rdi
-    addq %rbx, %rdi
-    movq %rbx, %r13
-    movq %rdi, %rbx
+    movq %rbx, %rdi
+    addq %r13, %rdi
+    movq %r13, %rbx
+    movq %rdi, %r13
     subq $1, %r12
     cmpq $0, %r12
     jg block.308
@@ -40,9 +40,9 @@ block.310:
 main_start:
     callq read_int
     movq %rax, %r12
-    movq $2, %r13
-    movq $3, %rbx
-    movq %rbx, %rdi
+    movq $2, %rbx
+    movq $3, %r13
+    movq %r13, %rdi
     cmpq $0, %r12
     jg block.310
     callq print_int
