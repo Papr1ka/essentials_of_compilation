@@ -1,18 +1,8 @@
 	.align 16
 block.123:
     addq -8(%rbp), %rbx
-    addq $1, %r13
+    addq $1, %r12
     jmp block.122
-
-	.align 16
-block.124:
-    movq %r12, %r11
-    movq %r13, %rcx
-    imulq $8, %rcx
-    addq %rcx, %r11
-    movq 8(%r11), %rax
-    movq %rax, -8(%rbp)
-    jmp block.123
 
 	.align 16
 block.125:
@@ -21,30 +11,40 @@ block.125:
     jmp block.123
 
 	.align 16
+block.124:
+    movq %r13, %r11
+    movq %r12, %rcx
+    imulq $8, %rcx
+    addq %rcx, %r11
+    movq 8(%r11), %rax
+    movq %rax, -8(%rbp)
+    jmp block.123
+
+	.align 16
 block.126:
-    movq %r12, %r11
-    movq 0(%r11), %rcx
-    movq $4611686018427387900, %rdx
-    andq %rdx, %rcx
-    sarq $2, %rcx
-    cmpq %rcx, %r13
+    movq %r13, %r11
+    movq 0(%r11), %rdx
+    movq $4611686018427387900, %rcx
+    andq %rcx, %rdx
+    sarq $2, %rdx
+    cmpq %rdx, %r12
     jl block.124
     jmp block.125
 
 	.align 16
 block.127:
-    cmpq $0, %r13
+    cmpq $0, %r12
     jge block.126
     jmp block.125
 
 	.align 16
 block.122:
-    movq %r12, %r11
-    movq 0(%r11), %rcx
-    movq $4611686018427387900, %rdx
-    andq %rdx, %rcx
-    sarq $2, %rcx
-    cmpq %rcx, %r13
+    movq %r13, %r11
+    movq 0(%r11), %rdx
+    movq $4611686018427387900, %rcx
+    andq %rcx, %rdx
+    sarq $2, %rdx
+    cmpq %rdx, %r12
     jl block.127
     movq %rbx, %rdi
     callq print_int
@@ -59,28 +59,28 @@ block.129:
     movq %rax, 0(%r11)
     movq %r11, %rcx
     movq %rcx, %r11
-    movq %r13, 8(%r11)
+    movq %r12, 8(%r11)
     movq %rcx, %r11
-    movq %r12, 16(%r11)
+    movq %rbx, 16(%r11)
     movq %rcx, %r11
-    movq %r14, 24(%r11)
+    movq %r13, 24(%r11)
+    movq %rcx, %r11
+    movq %r14, 32(%r11)
     movq %rcx, %r11
     movq -16(%rbp), %rax
-    movq %rax, 32(%r11)
-    movq %rcx, %r11
-    movq %rbx, 40(%r11)
-    movq %rcx, %r12
+    movq %rax, 40(%r11)
+    movq %rcx, %r13
     movq $0, %rbx
-    movq $0, %r13
+    movq $0, %r12
     jmp block.122
 
 	.align 16
 main_start:
-    movq $1, %r13
-    movq $2, %r12
-    movq $3, %r14
-    movq $4, -16(%rbp)
-    movq $5, %rbx
+    movq $1, %r12
+    movq $2, %rbx
+    movq $3, %r13
+    movq $4, %r14
+    movq $5, -16(%rbp)
     movq free_ptr(%rip), %rcx
     addq $48, %rcx
     cmpq fromspace_end(%rip), %rcx

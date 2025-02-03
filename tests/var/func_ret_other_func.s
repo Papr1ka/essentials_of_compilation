@@ -5,16 +5,15 @@ block.881:
     movq $5, 0(%r11)
     movq %r11, %rcx
     movq %rcx, %r11
-    movq %r13, 8(%r11)
+    movq %rbx, 8(%r11)
     movq %rcx, %r11
     movq %r14, 16(%r11)
-    movq %rbx, %rdi
+    movq %r12, %rdi
     movq %rcx, %rsi
-    callq *%r12
+    callq *%r13
     movq %rax, %rcx
     movq %rcx, %r11
-    movq 16(%r11), %rcx
-    movq %rcx, %rdi
+    movq 16(%r11), %rdi
     callq print_int
     movq $0, %rax
     jmp main_conclusion
@@ -23,9 +22,9 @@ block.881:
 main_start:
     leaq test(%rip), %rcx
     callq *%rcx
-    movq %rax, %rbx
-    leaq map(%rip), %r12
-    movq $0, %r13
+    movq %rax, %r12
+    leaq map(%rip), %r13
+    movq $0, %rbx
     movq $41, %r14
     movq free_ptr(%rip), %rcx
     addq $24, %rcx
@@ -66,7 +65,6 @@ main_conclusion:
 
 	.align 16
 test_start:
-    movq %rdi, %rcx
     leaq inc(%rip), %rax
     jmp test_conclusion
 
@@ -87,9 +85,8 @@ test_conclusion:
 
 	.align 16
 inc_start:
-    movq %rdi, %rcx
     movq $1, %rax
-    addq %rcx, %rax
+    addq %rdi, %rax
     jmp inc_conclusion
 
 	.align 16
@@ -125,13 +122,11 @@ map_start:
     movq %rdi, %rbx
     movq %rsi, -8(%r15)
     movq -8(%r15), %r11
-    movq 8(%r11), %rcx
-    movq %rcx, %rdi
+    movq 8(%r11), %rdi
     callq *%rbx
     movq %rax, %r12
     movq -8(%r15), %r11
-    movq 16(%r11), %rcx
-    movq %rcx, %rdi
+    movq 16(%r11), %rdi
     callq *%rbx
     movq %rax, %rbx
     movq free_ptr(%rip), %rcx

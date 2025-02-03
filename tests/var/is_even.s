@@ -11,15 +11,15 @@ block.381:
 
 	.align 16
 block.384:
-    xorq $1, %r12
-    addq $1, %rbx
+    xorq $1, %rbx
+    addq $1, %r12
     jmp block.383
 
 	.align 16
 block.383:
-    cmpq %r13, %rbx
+    cmpq %r13, %r12
     jl block.384
-    cmpq $0, %r12
+    cmpq $0, %rbx
     je block.381
     movq $1, %rdi
     callq print_int
@@ -29,8 +29,8 @@ block.383:
 main_start:
     callq read_int
     movq %rax, %r13
-    movq $1, %r12
-    movq $0, %rbx
+    movq $1, %rbx
+    movq $0, %r12
     jmp block.383
 
 	.globl main

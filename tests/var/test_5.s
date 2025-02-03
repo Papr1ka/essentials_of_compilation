@@ -1,13 +1,12 @@
 	.align 16
 block.719:
-    movq %rcx, %rdi
     callq print_int
     movq $0, %rax
     jmp main_conclusion
 
 	.align 16
 block.720:
-    movq $42, %rcx
+    movq $42, %rdi
     jmp block.719
 
 	.align 16
@@ -16,7 +15,7 @@ main_start:
     movq %rax, %rcx
     cmpq $1, %rcx
     je block.720
-    movq $0, %rcx
+    movq $0, %rdi
     jmp block.719
 
 	.globl main

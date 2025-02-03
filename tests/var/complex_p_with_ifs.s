@@ -1,26 +1,25 @@
 	.align 16
 block.289:
-    movq %rcx, %rdi
     callq print_int
     movq $0, %rax
     jmp main_conclusion
 
 	.align 16
 block.290:
-    negq %rcx
+    negq %rdi
     jmp block.289
 
 	.align 16
 block.291:
-    movq $4, %rcx
+    movq $4, %rdi
     jmp block.290
 
 	.align 16
 block.293:
     cmpq $2, %rbx
     je block.291
-    movq %rbx, %rcx
-    subq $2, %rcx
+    movq %rbx, %rdi
+    subq $2, %rdi
     jmp block.290
 
 	.align 16
@@ -29,7 +28,7 @@ block.295:
     movq %rax, %rcx
     cmpq $4, %rcx
     je block.293
-    movq $1, %rcx
+    movq $1, %rdi
     jmp block.289
 
 	.align 16

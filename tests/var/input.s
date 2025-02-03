@@ -1,8 +1,7 @@
 	.align 16
 main_start:
     callq read_int
-    movq %rax, %rcx
-    movq %rcx, %rdi
+    movq %rax, %rdi
     callq print_int
     movq $0, %rax
     jmp main_conclusion

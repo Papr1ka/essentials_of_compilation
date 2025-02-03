@@ -3,28 +3,26 @@ block.862:
     movq free_ptr(%rip), %r11
     addq $48, free_ptr(%rip)
     movq $11, 0(%r11)
-    movq %r11, %rcx
-    movq %rcx, %r11
-    movq %rbx, 8(%r11)
-    movq %rcx, %r11
-    movq %r13, 16(%r11)
-    movq %rcx, %r11
-    movq %r14, 24(%r11)
-    movq %rcx, %r11
+    movq %r11, %r9
+    movq %r9, %r11
+    movq %r14, 8(%r11)
+    movq %r9, %r11
+    movq %r12, 16(%r11)
+    movq %r9, %r11
+    movq %rbx, 24(%r11)
+    movq %r9, %r11
     movq -8(%rbp), %rax
     movq %rax, 32(%r11)
-    movq %rcx, %r11
+    movq %r9, %r11
     movq -16(%rbp), %rax
     movq %rax, 40(%r11)
-    movq %rcx, %r9
     movq $1, %rdi
     movq $2, %rsi
     movq $3, %rdx
     movq $4, %rcx
     movq $5, %r8
-    callq *%r12
-    movq %rax, %rcx
-    movq %rcx, %rdi
+    callq *%r13
+    movq %rax, %rdi
     callq print_int
     movq $0, %rax
     jmp main_conclusion
@@ -44,14 +42,13 @@ block.864:
     movq $3, %rdx
     movq $4, %rcx
     movq $5, %r8
-    callq *%r13
-    movq %rax, %rcx
-    movq %rcx, %rdi
+    callq *%r12
+    movq %rax, %rdi
     callq print_int
-    leaq sum10(%rip), %r12
-    movq $6, %rbx
-    movq $7, %r13
-    movq $8, %r14
+    leaq sum10(%rip), %r13
+    movq $6, %r14
+    movq $7, %r12
+    movq $8, %rbx
     movq $9, -8(%rbp)
     movq $10, -16(%rbp)
     movq free_ptr(%rip), %rcx
@@ -72,8 +69,7 @@ main_start:
     movq $4, %rcx
     movq $5, %r8
     callq *%r9
-    movq %rax, %rcx
-    movq %rcx, %rdi
+    movq %rax, %rdi
     callq print_int
     leaq sum6(%rip), %rbx
     movq $1, %rdi
@@ -83,10 +79,9 @@ main_start:
     movq $5, %r8
     movq $6, %r9
     callq *%rbx
-    movq %rax, %rcx
-    movq %rcx, %rdi
+    movq %rax, %rdi
     callq print_int
-    leaq sum7(%rip), %r13
+    leaq sum7(%rip), %r12
     movq $6, %rbx
     movq $7, %r14
     movq free_ptr(%rip), %rcx
@@ -180,14 +175,15 @@ sum7_start:
     addq %rsi, %rdi
     addq %rdx, %rdi
     addq %rcx, %rdi
-    addq %r8, %rdi
+    movq %rdi, %rcx
+    addq %r8, %rcx
     movq %r9, %r11
-    movq 8(%r11), %rcx
-    addq %rcx, %rdi
+    movq 8(%r11), %rdx
+    addq %rdx, %rcx
     movq %r9, %r11
-    movq 16(%r11), %rcx
-    movq %rdi, %rax
-    addq %rcx, %rax
+    movq 16(%r11), %rdx
+    movq %rcx, %rax
+    addq %rdx, %rax
     jmp sum7_conclusion
 
 	.align 16
@@ -215,11 +211,11 @@ sum10_start:
     movq 8(%r11), %rcx
     addq %rcx, %rdi
     movq %r9, %r11
-    movq 16(%r11), %rcx
-    addq %rcx, %rdi
+    movq 16(%r11), %rdx
+    movq %rdi, %rcx
+    addq %rdx, %rcx
     movq %r9, %r11
     movq 24(%r11), %rdx
-    movq %rdi, %rcx
     addq %rdx, %rcx
     movq %r9, %r11
     movq 32(%r11), %rdx

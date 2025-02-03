@@ -1,18 +1,17 @@
 	.align 16
 block.779:
-    movq %rcx, %rdi
     callq print_int
     movq $0, %rax
     jmp main_conclusion
 
 	.align 16
-block.781:
-    movq $0, %rcx
+block.780:
+    movq $42, %rdi
     jmp block.779
 
 	.align 16
-block.780:
-    movq $42, %rcx
+block.781:
+    movq $0, %rdi
     jmp block.779
 
 	.align 16
@@ -65,8 +64,7 @@ block.785:
     movq %rbx, %r11
     movq 8(%r11), %rcx
     movq %rcx, %r11
-    movq 8(%r11), %rcx
-    movq %rcx, %rdi
+    movq 8(%r11), %rdi
     callq print_int
     movq -16(%r15), %r11
     movq 0(%r11), %rcx
@@ -96,7 +94,6 @@ block.787:
 
 	.align 16
 block.789:
-    movq %rcx, %rdi
     callq print_int
     movq $42, %rbx
     movq free_ptr(%rip), %rcx
@@ -109,13 +106,13 @@ block.789:
     jmp block.787
 
 	.align 16
-block.790:
-    movq $42, %rcx
+block.791:
+    movq $0, %rdi
     jmp block.789
 
 	.align 16
-block.791:
-    movq $0, %rcx
+block.790:
+    movq $42, %rdi
     jmp block.789
 
 	.align 16
@@ -151,9 +148,9 @@ block.795:
     movq $5, 0(%r11)
     movq %r11, %rcx
     movq %rcx, %r11
-    movq %r12, 8(%r11)
+    movq %rbx, 8(%r11)
     movq %rcx, %r11
-    movq %rbx, 16(%r11)
+    movq %r12, 16(%r11)
     movq %rcx, -16(%r15)
     movq $3, %r12
     movq $7, %rbx
@@ -173,18 +170,17 @@ block.797:
     movq $7, 0(%r11)
     movq %r11, %rcx
     movq %rcx, %r11
-    movq %r12, 8(%r11)
+    movq %rbx, 8(%r11)
     movq %rcx, %r11
-    movq %r13, 16(%r11)
+    movq %r12, 16(%r11)
     movq %rcx, %r11
-    movq %rbx, 24(%r11)
+    movq %r13, 24(%r11)
     movq %rcx, -32(%r15)
     movq -32(%r15), %r11
-    movq 8(%r11), %rcx
-    movq %rcx, %rdi
+    movq 8(%r11), %rdi
     callq print_int
-    movq $3, %r12
-    movq $7, %rbx
+    movq $3, %rbx
+    movq $7, %r12
     movq free_ptr(%rip), %rcx
     addq $24, %rcx
     cmpq fromspace_end(%rip), %rcx
@@ -196,9 +192,9 @@ block.797:
 
 	.align 16
 main_start:
-    movq $42, %r12
-    movq $1, %r13
-    movq $2, %rbx
+    movq $42, %rbx
+    movq $1, %r12
+    movq $2, %r13
     movq free_ptr(%rip), %rcx
     addq $32, %rcx
     cmpq fromspace_end(%rip), %rcx

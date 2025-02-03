@@ -4,13 +4,13 @@ block.682:
     jmp main_conclusion
 
 	.align 16
-block.686:
+block.684:
     movq %rbx, %rdi
     callq print_int
     jmp block.682
 
 	.align 16
-block.685:
+block.686:
     movq %rbx, %rdi
     callq print_int
     jmp block.682
@@ -22,7 +22,7 @@ block.683:
     jmp block.682
 
 	.align 16
-block.684:
+block.685:
     movq %rbx, %rdi
     callq print_int
     jmp block.682

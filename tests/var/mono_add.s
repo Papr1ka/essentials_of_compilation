@@ -1,11 +1,10 @@
 	.align 16
 main_start:
-    movq $1, %rdx
-    addq %rdx, %rdx
-    movq %rdx, %rcx
-    addq %rdx, %rcx
-    addq %rcx, %rdx
-    movq %rdx, %rdi
+    movq $1, %rdi
+    addq %rdi, %rdi
+    movq %rdi, %rcx
+    addq %rdi, %rcx
+    addq %rcx, %rdi
     callq print_int
     movq $0, %rax
     jmp main_conclusion

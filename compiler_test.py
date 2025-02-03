@@ -62,11 +62,11 @@ print(add(40, 2))
 
 # print(test(-4))
 # """
-#     program = """
-# def add(x:int, y:int) -> int:
-#     return x + y
-# print(add(40, 2))
-# """
+    program = """
+def add(x:int, y:int) -> int:
+    return x + y
+print(add(40, 2))
+"""
 #     program = """
 # def tail_sum(n : int, r : int) -> int:
 #     if n == 0:

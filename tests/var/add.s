@@ -4,8 +4,7 @@ main_start:
     movq $40, %rdi
     movq $2, %rsi
     callq *%rcx
-    movq %rax, %rcx
-    movq %rcx, %rdi
+    movq %rax, %rdi
     callq print_int
     movq $0, %rax
     jmp main_conclusion
@@ -32,10 +31,8 @@ main_conclusion:
 
 	.align 16
 add_start:
-    movq %rdi, %rdx
-    movq %rsi, %rcx
-    movq %rdx, %rax
-    addq %rcx, %rax
+    movq %rdi, %rax
+    addq %rsi, %rax
     jmp add_conclusion
 
 	.align 16

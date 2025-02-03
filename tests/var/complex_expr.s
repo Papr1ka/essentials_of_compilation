@@ -9,9 +9,8 @@ main_start:
     movq $-2, %rsi
     addq %rcx, %rsi
     subq %rsi, %rdx
-    movq $-3, %rcx
-    addq %rdx, %rcx
-    movq %rcx, %rdi
+    movq $-3, %rdi
+    addq %rdx, %rdi
     callq print_int
     movq $0, %rax
     jmp main_conclusion

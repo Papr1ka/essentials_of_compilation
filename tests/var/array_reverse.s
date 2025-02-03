@@ -41,11 +41,11 @@ block.84:
 	.align 16
 block.79:
     movq %r12, %r11
-    movq 0(%r11), %rcx
-    movq $4611686018427387900, %rdx
-    andq %rdx, %rcx
-    sarq $2, %rcx
-    cmpq %rcx, %rbx
+    movq 0(%r11), %rdx
+    movq $4611686018427387900, %rcx
+    andq %rcx, %rdx
+    sarq $2, %rdx
+    cmpq %rdx, %rbx
     jl block.84
     movq $0, %rax
     jmp main_conclusion
@@ -87,11 +87,11 @@ block.89:
 	.align 16
 block.91:
     movq -8(%r15), %r11
-    movq 0(%r11), %rdx
-    movq $4611686018427387900, %rcx
-    andq %rcx, %rdx
-    sarq $2, %rdx
-    cmpq %rdx, %rbx
+    movq 0(%r11), %rcx
+    movq $4611686018427387900, %rdx
+    andq %rdx, %rcx
+    sarq $2, %rcx
+    cmpq %rcx, %rbx
     jl block.89
     jmp block.90
 
@@ -130,11 +130,10 @@ block.94:
 	.align 16
 block.95:
     movq %r12, %r11
-    movq 0(%r11), %rdx
-    movq $4611686018427387900, %rcx
-    andq %rcx, %rdx
-    sarq $2, %rdx
-    movq %rdx, %rcx
+    movq 0(%r11), %rcx
+    movq $4611686018427387900, %rdx
+    andq %rdx, %rcx
+    sarq $2, %rcx
     subq %rbx, %rcx
     subq $1, %rcx
     cmpq $0, %rcx
@@ -144,11 +143,11 @@ block.95:
 	.align 16
 block.86:
     movq -8(%r15), %r11
-    movq 0(%r11), %rcx
-    movq $4611686018427387900, %rdx
-    andq %rdx, %rcx
-    sarq $2, %rcx
-    cmpq %rcx, %rbx
+    movq 0(%r11), %rdx
+    movq $4611686018427387900, %rcx
+    andq %rcx, %rdx
+    sarq $2, %rdx
+    cmpq %rdx, %rbx
     jl block.95
     movq $0, %rbx
     jmp block.79

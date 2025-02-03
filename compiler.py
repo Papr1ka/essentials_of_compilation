@@ -2073,7 +2073,9 @@ class Compiler:
                 for block in basic_blocks.values():
                     for instr in block:
                         match instr:
-                            case Instr("movq", [Variable() as s, Variable() as d]):
+                            case Instr("movq", [Variable() | Reg() as s, Variable() as d]):
+                                graph.add_edge(s, d)
+                            case Instr("movq", [Variable() as s, Reg() as d]):
                                 graph.add_edge(s, d)
                 return graph
 
@@ -2115,9 +2117,16 @@ class Compiler:
         def available_move_related_color(x) -> int | None:
             not_available = saturations[x]
             related = move_graph.adjacent(x)
-            move_related_colors = [
-                color_mapping[var] for var in related if var in color_mapping
-            ]
+            move_related_colors = []
+            for var in related:
+                match var:
+                    case Variable():
+                        if var in color_mapping:
+                            move_related_colors.append(color_mapping[var])
+                    case Reg(reg):
+                        if register_to_integer[reg] >= 0:
+                            move_related_colors.append(register_to_integer[reg])
+
             min_available = lowest_available_color(not_available)
             is_on_stack = lambda x: x >= self.available
             is_on_reg = lambda x: x < self.available

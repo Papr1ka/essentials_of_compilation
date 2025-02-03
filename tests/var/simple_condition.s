@@ -13,10 +13,9 @@ block.709:
 main_start:
     movq $2, %rbx
     callq read_int
-    movq %rax, %rcx
-    cmpq %rcx, %rbx
+    movq %rax, %rdi
+    cmpq %rdi, %rbx
     je block.709
-    movq %rcx, %rdi
     callq print_int
     jmp block.708
 

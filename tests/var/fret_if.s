@@ -3,8 +3,7 @@ main_start:
     leaq test(%rip), %rcx
     movq $-4, %rdi
     callq *%rcx
-    movq %rax, %rcx
-    movq %rcx, %rdi
+    movq %rax, %rdi
     callq print_int
     movq $0, %rax
     jmp main_conclusion
@@ -41,8 +40,7 @@ block.810:
 
 	.align 16
 test_start:
-    movq %rdi, %rcx
-    cmpq $0, %rcx
+    cmpq $0, %rdi
     jg block.810
     movq $3, %rcx
     jmp block.809
