@@ -5,13 +5,13 @@ block.779:
     jmp main_conclusion
 
 	.align 16
-block.780:
-    movq $42, %rdi
+block.781:
+    movq $0, %rdi
     jmp block.779
 
 	.align 16
-block.781:
-    movq $0, %rdi
+block.780:
+    movq $42, %rdi
     jmp block.779
 
 	.align 16
@@ -106,13 +106,13 @@ block.789:
     jmp block.787
 
 	.align 16
-block.791:
-    movq $0, %rdi
+block.790:
+    movq $42, %rdi
     jmp block.789
 
 	.align 16
-block.790:
-    movq $42, %rdi
+block.791:
+    movq $0, %rdi
     jmp block.789
 
 	.align 16
@@ -170,11 +170,11 @@ block.797:
     movq $7, 0(%r11)
     movq %r11, %rcx
     movq %rcx, %r11
-    movq %r13, 8(%r11)
+    movq %r12, 8(%r11)
     movq %rcx, %r11
-    movq %r12, 16(%r11)
+    movq %rbx, 16(%r11)
     movq %rcx, %r11
-    movq %rbx, 24(%r11)
+    movq %r13, 24(%r11)
     movq %rcx, -32(%r15)
     movq -32(%r15), %r11
     movq 8(%r11), %rdi
@@ -192,9 +192,9 @@ block.797:
 
 	.align 16
 main_start:
-    movq $42, %r13
-    movq $1, %r12
-    movq $2, %rbx
+    movq $42, %r12
+    movq $1, %rbx
+    movq $2, %r13
     movq free_ptr(%rip), %rcx
     addq $32, %rcx
     cmpq fromspace_end(%rip), %rcx

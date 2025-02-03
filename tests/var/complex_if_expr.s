@@ -5,14 +5,14 @@ block.279:
     jmp main_conclusion
 
 	.align 16
-block.280:
-    movq $2, %rdi
+block.281:
+    movq $10, %rdi
     addq %rcx, %rdi
     jmp block.279
 
 	.align 16
-block.281:
-    movq $10, %rdi
+block.280:
+    movq $2, %rdi
     addq %rcx, %rdi
     jmp block.279
 

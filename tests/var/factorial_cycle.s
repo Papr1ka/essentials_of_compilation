@@ -1,28 +1,28 @@
 	.align 16
 block.301:
-    addq %rdx, %rbx
-    subq $1, %rcx
+    addq %rcx, %r12
+    subq $1, %rdx
     jmp block.300
 
 	.align 16
 block.300:
-    cmpq $0, %rcx
+    cmpq $0, %rdx
     jg block.301
-    subq $1, %r12
+    subq $1, %rbx
     jmp block.299
 
 	.align 16
 block.303:
-    movq %rbx, %rdx
     movq %r12, %rcx
-    movq $0, %rbx
+    movq %rbx, %rdx
+    movq $0, %r12
     jmp block.300
 
 	.align 16
 block.299:
-    cmpq $0, %r12
+    cmpq $0, %rbx
     jg block.303
-    movq %rbx, %rdi
+    movq %r12, %rdi
     callq print_int
     movq $0, %rax
     jmp main_conclusion
@@ -30,8 +30,8 @@ block.299:
 	.align 16
 main_start:
     callq read_int
-    movq %rax, %r12
-    movq $1, %rbx
+    movq %rax, %rbx
+    movq $1, %r12
     jmp block.299
 
 	.globl main

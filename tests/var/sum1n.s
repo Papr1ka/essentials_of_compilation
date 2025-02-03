@@ -1,23 +1,23 @@
 	.align 16
 block.715:
-    addq %rbx, %r12
-    subq $1, %rbx
+    addq %r12, %rbx
+    subq $1, %r12
     jmp block.714
 
 	.align 16
 block.714:
-    cmpq $0, %rbx
+    cmpq $0, %r12
     jg block.715
-    movq %r12, %rdi
+    movq %rbx, %rdi
     callq print_int
     movq $0, %rax
     jmp main_conclusion
 
 	.align 16
 main_start:
-    movq $0, %r12
+    movq $0, %rbx
     callq read_int
-    movq %rax, %rbx
+    movq %rax, %r12
     jmp block.714
 
 	.globl main

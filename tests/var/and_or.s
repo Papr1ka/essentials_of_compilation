@@ -114,14 +114,14 @@ block.39:
     jmp block.35
 
 	.align 16
-block.41:
-    movq $2, %rdi
+block.40:
+    movq $3, %rdi
     callq print_int
     jmp block.39
 
 	.align 16
-block.40:
-    movq $3, %rdi
+block.41:
+    movq $2, %rdi
     callq print_int
     jmp block.39
 

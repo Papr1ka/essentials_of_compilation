@@ -1,13 +1,13 @@
 	.align 16
 main_start:
     callq read_int
-    movq %rax, %r12
-    leaq tail_sum(%rip), %rbx
+    movq %rax, %rbx
+    leaq tail_sum(%rip), %r12
     movq $3, %rdi
     movq $0, %rsi
-    callq *%rbx
+    callq *%r12
     movq %rax, %rdi
-    addq %r12, %rdi
+    addq %rbx, %rdi
     callq print_int
     movq $0, %rax
     jmp main_conclusion
@@ -38,21 +38,21 @@ main_conclusion:
 
 	.align 16
 block.804:
-    movq %rdx, %rax
+    movq %rcx, %rax
     jmp tail_sum_conclusion
 
 	.align 16
 tail_sum_start:
     movq %rdi, %r8
-    movq %rsi, %rdx
+    movq %rsi, %rcx
     cmpq $0, %r8
     je block.804
-    leaq tail_sum(%rip), %rcx
+    leaq tail_sum(%rip), %rdx
     movq %r8, %rdi
     subq $1, %rdi
     movq %r8, %rsi
-    addq %rdx, %rsi
-    movq %rcx, %rax
+    addq %rcx, %rsi
+    movq %rdx, %rax
     subq $0, %r15
     addq $0, %rsp
     popq %rbp

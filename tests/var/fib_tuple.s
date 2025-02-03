@@ -7,21 +7,21 @@ block.335:
     movq %rcx, %r11
     movq %r13, 8(%r11)
     movq %rcx, %r11
-    movq %rbx, 16(%r11)
-    movq %rcx, %rbx
-    addq $1, %r12
+    movq %r12, 16(%r11)
+    movq %rcx, %r12
+    addq $1, %rbx
     jmp block.334
 
 	.align 16
 block.337:
-    movq %rbx, %r11
+    movq %r12, %r11
     movq 16(%r11), %r13
-    movq %rbx, %r11
+    movq %r12, %r11
     movq 8(%r11), %rcx
-    movq %rbx, %r11
+    movq %r12, %r11
     movq 16(%r11), %rdx
-    movq %rcx, %rbx
-    addq %rdx, %rbx
+    movq %rcx, %r12
+    addq %rdx, %r12
     movq free_ptr(%rip), %rcx
     addq $24, %rcx
     cmpq fromspace_end(%rip), %rcx
@@ -33,11 +33,11 @@ block.337:
 
 	.align 16
 block.334:
-    cmpq $8, %r12
+    cmpq $8, %rbx
     jl block.337
-    movq %rbx, %r11
+    movq %r12, %r11
     movq 8(%r11), %rcx
-    movq %rbx, %r11
+    movq %r12, %r11
     movq 16(%r11), %rdx
     addq %rdx, %rcx
     movq %rcx, %rdi
@@ -55,8 +55,8 @@ block.339:
     movq %rbx, 8(%r11)
     movq %rcx, %r11
     movq %r12, 16(%r11)
-    movq %rcx, %rbx
-    movq $0, %r12
+    movq %rcx, %r12
+    movq $0, %rbx
     jmp block.334
 
 	.align 16

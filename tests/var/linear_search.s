@@ -5,16 +5,16 @@ block.416:
 
 	.align 16
 block.409:
-    movq %r13, %rdi
+    movq %r12, %rdi
     callq print_int
     movq $1, %rbx
     jmp block.408
 
 	.align 16
 block.411:
-    cmpq %r12, -8(%rbp)
+    cmpq %r13, -8(%rbp)
     je block.409
-    addq $1, %r13
+    addq $1, %r12
     jmp block.408
 
 	.align 16
@@ -26,7 +26,7 @@ block.413:
 	.align 16
 block.412:
     movq %r14, %r11
-    movq %r13, %rcx
+    movq %r12, %rcx
     imulq $8, %rcx
     addq %rcx, %r11
     movq 8(%r11), %rax
@@ -40,13 +40,13 @@ block.414:
     movq $4611686018427387900, %rcx
     andq %rcx, %rdx
     sarq $2, %rdx
-    cmpq %rdx, %r13
+    cmpq %rdx, %r12
     jl block.412
     jmp block.413
 
 	.align 16
 block.415:
-    cmpq $0, %r13
+    cmpq $0, %r12
     jge block.414
     jmp block.413
 
@@ -59,11 +59,11 @@ block.417:
 	.align 16
 block.408:
     movq %r14, %r11
-    movq 0(%r11), %rcx
-    movq $4611686018427387900, %rdx
-    andq %rdx, %rcx
-    sarq $2, %rcx
-    cmpq %rcx, %r13
+    movq 0(%r11), %rdx
+    movq $4611686018427387900, %rcx
+    andq %rcx, %rdx
+    sarq $2, %rdx
+    cmpq %rdx, %r12
     jl block.417
     jmp block.416
 
@@ -75,17 +75,17 @@ block.418:
     movq %rax, 0(%r11)
     movq %r11, %rcx
     movq %rcx, %r11
-    movq %r13, 8(%r11)
+    movq %r14, 8(%r11)
     movq %rcx, %r11
-    movq %r14, 16(%r11)
+    movq %r13, 16(%r11)
+    movq %rcx, %r11
+    movq %r12, 24(%r11)
     movq %rcx, %r11
     movq -16(%rbp), %rax
-    movq %rax, 24(%r11)
-    movq %rcx, %r11
-    movq -24(%rbp), %rax
     movq %rax, 32(%r11)
     movq %rcx, %r11
-    movq %r12, 40(%r11)
+    movq -24(%rbp), %rax
+    movq %rax, 40(%r11)
     movq %rcx, %r11
     movq %rbx, 48(%r11)
     movq %rcx, %r11
@@ -123,19 +123,19 @@ block.418:
     movq %rax, 136(%r11)
     movq %rcx, %r14
     callq read_int
-    movq %rax, %r12
-    movq $0, %r13
+    movq %rax, %r13
+    movq $0, %r12
     movq $0, %rbx
     jmp block.408
 
 	.align 16
 main_start:
-    movq $1, %r13
-    movq $2, %r14
-    movq $5, -16(%rbp)
-    movq $10, -24(%rbp)
-    movq $4, %r12
-    negq %r12
+    movq $1, %r14
+    movq $2, %r13
+    movq $5, %r12
+    movq $10, -16(%rbp)
+    movq $4, -24(%rbp)
+    negq -24(%rbp)
     movq $15, %rbx
     movq $2, -32(%rbp)
     movq $9, -40(%rbp)
